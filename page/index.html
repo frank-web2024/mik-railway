@@ -107,7 +107,7 @@
 <button id="topview-btn" title="切换俯视图">⬇</button>
 
 <div id="legend"><h3>线路图例</h3><div id="legend-list"></div></div>
-<div id="hint"><span>🖱 左键旋转</span> &nbsp;|&nbsp; <span>滚轮缩放</span> &nbsp;|&nbsp; <span>右键平移</span></div>
+<div id="hint"><span>🖱 左键旋转</span> &nbsp;|&nbsp; <span>🖱 中键平移</span> &nbsp;|&nbsp; <span>🖱 右键缩放</span></div>
 <div id="tooltip"></div>
 
 <script type="importmap">
@@ -165,6 +165,10 @@ controls.dampingFactor = 0.08;
 controls.minDistance = 10;
 controls.maxDistance = 4000;
 controls.maxPolarAngle = Math.PI * 0.75;
+// 鼠标映射：左键旋转、中键平移、右键缩放
+controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
+controls.mouseButtons.RIGHT = THREE.MOUSE.DOLLY;
 controls.update();
 
 // ── 光照 ──────────────────────────────────────
@@ -238,35 +242,13 @@ function toVec3(coord) {
   return new THREE.Vector3(coord.x, coord.y, coord.z);
 }
 
-// ── 绘制线路连线 (TubeGeometry 双向并行管道) ──
+// ── 绘制线路连线 (TubeGeometry 单管道) ──────
 const lineGroup = new THREE.Group();
 scene.add(lineGroup);
 
-const TUBE_RADIUS = 1.8;
+const TUBE_RADIUS = 2.5;
 const TUBE_SEGMENTS = 80;
 const TUBE_RADIAL = 8;
-const TRACK_SPACING = 3.5; // 双向轨道间距
-
-// 偏移曲线：沿 x-z 平面法向量偏移
-function offsetCurve(curve, offset, samples) {
-  const pts = [];
-  for (let i = 0; i <= samples; i++) {
-    const t = i / samples;
-    const pt = curve.getPointAt(t);
-    const tan = curve.getTangentAt(t).normalize();
-    const normal = new THREE.Vector3(-tan.z, 0, tan.x).normalize();
-    pts.push(pt.clone().addScaledVector(normal, offset));
-  }
-  return new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
-}
-
-function addTube(curve, radius, material, group) {
-  const geo = new THREE.TubeGeometry(curve, TUBE_SEGMENTS, radius, TUBE_RADIAL, false);
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  group.add(mesh);
-}
 
 for (const [lineId, items] of Object.entries(lineLevels)) {
   const line = lineMap[lineId];
@@ -281,35 +263,36 @@ for (const [lineId, items] of Object.entries(lineLevels)) {
   const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5);
 
   if (isPlanned) {
-    // Planned: 两条细半透明管道
+    const tubeGeo = new THREE.TubeGeometry(curve, TUBE_SEGMENTS, TUBE_RADIUS * 0.5, TUBE_RADIAL, false);
     const tubeMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2, transparent: true, opacity: 0.4 });
-    const c1 = offsetCurve(curve, -TRACK_SPACING / 2, TUBE_SEGMENTS);
-    const c2 = offsetCurve(curve, +TRACK_SPACING / 2, TUBE_SEGMENTS);
-    addTube(c1, TUBE_RADIUS * 0.5, tubeMat, lineGroup);
-    addTube(c2, TUBE_RADIUS * 0.5, tubeMat, lineGroup);
-    // 中心虚线
+    const tube = new THREE.Mesh(tubeGeo, tubeMat);
+    tube.castShadow = true; tube.receiveShadow = true;
+    lineGroup.add(tube);
+    // 虚线叠加
     const dashPts = curve.getPoints(points.length * 20);
     const dashGeo = new THREE.BufferGeometry().setFromPoints(dashPts);
-    const dashMat = new THREE.LineDashedMaterial({ color, linewidth: 2, dashSize: 10, gapSize: 6 });
-    const dashLine = new THREE.Line(dashGeo, dashMat);
+    const dashLine = new THREE.Line(dashGeo, new THREE.LineDashedMaterial({ color, linewidth: 2, dashSize: 10, gapSize: 6 }));
     dashLine.computeLineDistances();
     lineGroup.add(dashLine);
   } else {
-    // Metro: 两条实心管道 + 发光外层
+    const tubeGeo = new THREE.TubeGeometry(curve, TUBE_SEGMENTS, TUBE_RADIUS, TUBE_RADIAL, false);
     const tubeMat = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.5 });
-    const glowMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.1, depthWrite: false });
-    const c1 = offsetCurve(curve, -TRACK_SPACING / 2, TUBE_SEGMENTS);
-    const c2 = offsetCurve(curve, +TRACK_SPACING / 2, TUBE_SEGMENTS);
-    addTube(c1, TUBE_RADIUS, tubeMat, lineGroup);
-    addTube(c2, TUBE_RADIUS, tubeMat, lineGroup);
-    addTube(c1, TUBE_RADIUS * 1.5, glowMat, lineGroup);
-    addTube(c2, TUBE_RADIUS * 1.5, glowMat, lineGroup);
+    const tube = new THREE.Mesh(tubeGeo, tubeMat);
+    tube.castShadow = true; tube.receiveShadow = true;
+    lineGroup.add(tube);
+    // 发光外层
+    const glowGeo = new THREE.TubeGeometry(curve, TUBE_SEGMENTS, TUBE_RADIUS * 1.6, TUBE_RADIAL, false);
+    const glowTube = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, depthWrite: false }));
+    lineGroup.add(glowTube);
   }
 }
 
-// ── 绘制同站不同层级的垂直连线 ────────────────
+// ── 绘制同站不同层级的垂直连线（突出同站多层） ──
 const stationLevelGroups = {};
 for (const st of data.stations) stationLevelGroups[st.stationId] = st.levels;
+
+const vDashGroup = new THREE.Group();
+scene.add(vDashGroup);
 
 for (const [, levels] of Object.entries(stationLevelGroups)) {
   if (levels.length < 2) continue;
@@ -317,11 +300,12 @@ for (const [, levels] of Object.entries(stationLevelGroups)) {
   for (let i = 0; i < sorted.length - 1; i++) {
     const a = toVec3(sorted[i].coordinate);
     const b = toVec3(sorted[i + 1].coordinate);
+    // 明显虚线：同站多层连接
     const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
-    const mat = new THREE.LineDashedMaterial({ color: '#556677', linewidth: 1, dashSize: 4, gapSize: 5, transparent: true, opacity: 0.4 });
+    const mat = new THREE.LineDashedMaterial({ color: '#ffaa00', linewidth: 2, dashSize: 5, gapSize: 4, transparent: true, opacity: 0.7 });
     const dash = new THREE.Line(geo, mat);
     dash.computeLineDistances();
-    lineGroup.add(dash);
+    vDashGroup.add(dash);
   }
 }
 
@@ -357,20 +341,22 @@ for (const st of data.stations) {
 const labelGroup = new THREE.Group();
 scene.add(labelGroup);
 
+// 站点标签（含层级数和坐标）
 for (const st of data.stations) {
-  // 每个站点取第一个 level 的坐标作为标签位置（或取平均值）
   const avgX = st.levels.reduce((s, l) => s + l.coordinate.x, 0) / st.levels.length;
   const avgY = st.levels.reduce((s, l) => s + l.coordinate.y, 0) / st.levels.length;
   const avgZ = st.levels.reduce((s, l) => s + l.coordinate.z, 0) / st.levels.length;
   const pos = new THREE.Vector3(avgX, avgY + STATION_RADIUS + 5, avgZ);
+  const hasMulti = st.levels.length > 1;
 
   const div = document.createElement('div');
-  div.textContent = st.name;
+  const c0 = st.levels[0].coordinate;
+  div.innerHTML = `<span style="font-weight:600;">${st.name}</span>${hasMulti ? ' <span style="color:#ffaa00;font-size:10px;">'+st.levels.length+'层</span>' : ''}<br><span style="font-size:10px;color:#999;">x${c0.x} y${c0.y} z${c0.z}</span>`;
   div.style.cssText = `
-    color: #ffffff; font-size: 12px; font-weight: 600;
+    color: #ffffff; font-size: 12px;
     text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 3px rgba(0,0,0,0.9);
     white-space: nowrap; pointer-events: none;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.5px; text-align: center; line-height: 1.4;
   `;
   const label = new CSS2DObject(div);
   label.position.copy(pos);
@@ -416,12 +402,15 @@ function onMouseMove(e) {
       const date = station.openingDate ? `${station.openingDate.y}-${String(station.openingDate.m).padStart(2,'0')}-${String(station.openingDate.d).padStart(2,'0')}` : '未知';
       const levelLabel = levelObj.level >= 0 ? `地上 ${levelObj.level} 层` : `地下 ${Math.abs(levelObj.level)} 层`;
       const dirLabel = levelObj.direction === 'e,w' ? '东西向' : levelObj.direction === 's,n' ? '南北向' : levelObj.direction;
+      const c = levelObj.coordinate;
+      const sameStationCount = station.levels.length;
 
       tooltip.innerHTML = `
-        <div class="tt-name">${station.name}</div>
+        <div class="tt-name">${station.name} ${sameStationCount > 1 ? '<span style="color:#ffaa00;font-size:11px;">('+sameStationCount+'层)</span>' : ''}</div>
         <div class="tt-row">📍 ${station.district} &nbsp;|&nbsp; 🚉 ${station.platformCount} 站台</div>
         <div class="tt-row">🏗 ${levelLabel} &nbsp;|&nbsp; 🛤 ${dirLabel} &nbsp;|&nbsp; ${levelObj.tracks} 轨</div>
         <div class="tt-row">📅 开通: ${date}</div>
+        <div class="tt-row" style="color:#ffcc80;">📐 坐标: x=${c.x} y=${c.y} z=${c.z}</div>
         <div style="margin-top:6px;"><span class="tt-line" style="background:${line?.color||'#888'}">${line?.lineName||levelObj.lineId}</span> <span style="font-size:10px;color:#999">${line?.type||''}</span></div>
       `;
       tooltip.classList.add('visible');

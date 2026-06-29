@@ -174,11 +174,14 @@ canvas.addEventListener('mousemove', e => {
     const date = st.openingDate ? `${st.openingDate.y}-${String(st.openingDate.m).padStart(2,'0')}-${String(st.openingDate.d).padStart(2,'0')}` : '未知';
     const lvLabel = lv.level >= 0 ? `地上${lv.level}层` : `地下${Math.abs(lv.level)}层`;
     const dirLabel = lv.direction==='e,w'?'东西向':lv.direction==='s,n'?'南北向':lv.direction;
+    const c = lv.coordinate;
+    const sameCount = st.levels.length;
     tt.innerHTML = `
-      <div class="tt-name">${st.name}</div>
+      <div class="tt-name">${st.name} ${sameCount>1?'<span style="color:#ffaa00;font-size:11px;">('+sameCount+'层)</span>':''}</div>
       <div class="tt-row">📍 ${st.district} &nbsp;|&nbsp; 🚉 ${st.platformCount} 站台</div>
       <div class="tt-row">🏗 ${lvLabel} &nbsp;|&nbsp; 🛤 ${dirLabel} &nbsp;|&nbsp; ${lv.tracks} 轨</div>
       <div class="tt-row">📅 开通: ${date}</div>
+      <div class="tt-row" style="color:#ffcc80;">📐 坐标: x${c.x} y${c.y} z${c.z}</div>
       <div style="margin-top:6px;"><span class="tt-line" style="background:${line?.color||'#888'}">${line?.lineName||lv.lineId}</span></div>
     `;
     tt.classList.add('visible');
@@ -202,16 +205,17 @@ canvas.addEventListener('wheel', e => {
 }, { passive:false });
 
 // ── 渲染 ──────────────────────────────────────
-const TRACK_GAP = 3; // 双向轨道像素间距（世界坐标）
 
-function offsetPoints(curve, offset) {
-  return curve.map((p, i) => {
-    const next = curve[Math.min(i+1, curve.length-1)];
-    const prev = curve[Math.max(i-1, 0)];
-    const dx = next.x - prev.x, dz = next.z - prev.z;
-    const len = Math.sqrt(dx*dx + dz*dz) || 1;
-    return { x: p.x + (-dz/len) * offset, z: p.z + (dx/len) * offset };
-  });
+function drawPolyline(pts) {
+  if (pts.length < 2) return;
+  ctx.beginPath();
+  const s0 = worldToScreen(pts[0].x, pts[0].z);
+  ctx.moveTo(s0.x, s0.y);
+  for (let i = 1; i < pts.length; i++) {
+    const s = worldToScreen(pts[i].x, pts[i].z);
+    ctx.lineTo(s.x, s.y);
+  }
+  ctx.stroke();
 }
 
 function render() {
@@ -220,32 +224,44 @@ function render() {
   ctx.fillStyle = '#1a1d23';
   ctx.fillRect(0, 0, W, H);
 
-  // 线路（双向双线）
+  // 线路（单线）
   for (const [lineId, items] of Object.entries(lineLevels)) {
     const line = lineMap[lineId];
     if (!line || items.length < 2) continue;
     const sorted = [...items].sort((a,b) => a.level.coordinate.x - b.level.coordinate.x);
     const pts = sorted.map(it => ({ x: it.level.coordinate.x, z: it.level.coordinate.z }));
-
     const isPlanned = line.type === 'Planned';
-    const left = offsetPoints(pts, -TRACK_GAP);
-    const right = offsetPoints(pts, +TRACK_GAP);
-
     if (isPlanned) {
-      ctx.strokeStyle = line.color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = line.color; ctx.lineWidth = 2; ctx.globalAlpha = 0.5;
       ctx.setLineDash([6, 4]);
-      for (const side of [left, right]) {
-        drawPolyline(side);
-      }
+      drawPolyline(pts);
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
     } else {
-      ctx.strokeStyle = line.color; ctx.lineWidth = 2.5; ctx.globalAlpha = 1;
-      for (const side of [left, right]) {
-        drawPolyline(side);
-      }
+      ctx.strokeStyle = line.color; ctx.lineWidth = 3.5; ctx.globalAlpha = 1;
+      drawPolyline(pts);
     }
   }
+
+  // 同一站点不同层级虚线连接（橙色高亮）
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = '#ffaa00';
+  ctx.lineWidth = 1.8;
+  ctx.globalAlpha = 0.65;
+  for (const st of data.stations) {
+    if (st.levels.length < 2) continue;
+    const sorted = [...st.levels].sort((a,b) => a.level - b.level);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const a = worldToScreen(sorted[i].coordinate.x, sorted[i].coordinate.z);
+      const b = worldToScreen(sorted[i+1].coordinate.x, sorted[i+1].coordinate.z);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
 
   // 站点
   for (const st of data.stations) {
@@ -272,7 +288,7 @@ function render() {
     }
   }
 
-  // 站点标签
+  // 站点标签（含层级数和坐标）
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 12px "PingFang SC","Microsoft YaHei",sans-serif';
   ctx.textAlign = 'center';
@@ -285,7 +301,15 @@ function render() {
     const key = `${ax.toFixed(1)},${az.toFixed(1)}`;
     if (drawn.has(key)) continue; drawn.add(key);
     const s = worldToScreen(ax, az);
-    ctx.fillText(st.name, s.x, s.y - 14);
+    const hasMulti = st.levels.length > 1;
+    ctx.fillText(st.name + (hasMulti ? ' ('+st.levels.length+'层)' : ''), s.x, s.y - 14);
+    // 坐标小字
+    ctx.font = '10px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.fillStyle = '#888';
+    const c0 = st.levels[0].coordinate;
+    ctx.fillText(`x${c0.x} y${c0.y} z${c0.z}`, s.x, s.y + 4);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px "PingFang SC","Microsoft YaHei",sans-serif';
   }
   ctx.shadowBlur = 0;
 }
