@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>轨道交通地图</title>
+<style>
+  :root {
+    --bg: #1a1d23;
+    --panel-bg: rgba(26, 29, 35, 0.92);
+    --text: #e0e0e0;
+    --text-dim: #999;
+    --accent: #4fc3f7;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); font-family: "PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif; }
+  #canvas-container { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* 顶部信息栏 */
+  #top-bar {
+    position: fixed; top: 16px; left: 16px; right: 16px; z-index: 10;
+    display: flex; gap: 12px; align-items: center; pointer-events: none;
+  }
+  #top-bar > * { pointer-events: auto; }
+  #title-card {
+    background: var(--panel-bg); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+    padding: 12px 20px; color: var(--text);
+  }
+  #title-card h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+  #title-card span { font-size: 12px; color: var(--text-dim); }
+
+  /* 图例 */
+  #legend {
+    position: fixed; bottom: 24px; left: 16px; z-index: 10;
+    background: var(--panel-bg); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+    padding: 14px 18px; color: var(--text); min-width: 180px;
+  }
+  #legend h3 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; font-size: 13px; }
+  .legend-item:last-child { margin-bottom: 0; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-line { width: 20px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+  .legend-badge {
+    font-size: 10px; padding: 1px 6px; border-radius: 4px;
+    background: rgba(255,255,255,0.1); color: var(--text-dim); margin-left: auto;
+  }
+
+  /* 操作提示 */
+  #hint {
+    position: fixed; bottom: 24px; right: 24px; z-index: 10;
+    background: var(--panel-bg); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+    padding: 10px 16px; color: var(--text-dim); font-size: 12px;
+    pointer-events: none; user-select: none;
+  }
+  #hint span { color: var(--accent); }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed; z-index: 20; pointer-events: none; opacity: 0;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 10px;
+    padding: 12px 16px; color: #fff; font-size: 13px; line-height: 1.6;
+    transform: translate(-50%, -120%); transition: opacity 0.15s;
+    white-space: nowrap; max-width: 280px;
+  }
+  #tooltip.visible { opacity: 1; }
+  #tooltip .tt-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  #tooltip .tt-line { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 4px; color: #fff; }
+  #tooltip .tt-row { color: #bbb; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="top-bar">
+  <div id="title-card">
+    <h1 id="network-name">轨道交通</h1>
+    <span id="update-info"></span>
+  </div>
+</div>
+
+<div id="legend"><h3>线路图例</h3><div id="legend-list"></div></div>
+<div id="hint"><span>🖱 左键旋转</span> &nbsp;|&nbsp; <span>滚轮缩放</span> &nbsp;|&nbsp; <span>右键平移</span></div>
+<div id="tooltip"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ── 数据加载 ──────────────────────────────────
+const res = await fetch('railway_data.json');
+const data = await res.json();
+
+// ── 常量 ──────────────────────────────────────
+const STATION_RADIUS = 6;
+const STATION_SEGMENTS = 32;
+const GROUND_Y = 35; // 地面参考面 y 坐标（略低于最低站点 y=41）
+
+// ── 场景初始化 ────────────────────────────────
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#1a1d23');
+scene.fog = new THREE.Fog('#1a1d23', 800, 2000);
+
+const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 5, 5000);
+camera.position.set(400, 250, 700);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+// CSS2D 渲染器（标签）
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(container.clientWidth, container.clientHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+container.appendChild(labelRenderer.domElement);
+
+// OrbitControls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(-50, 60, 540);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 30;
+controls.maxDistance = 1500;
+controls.maxPolarAngle = Math.PI * 0.75;
+controls.update();
+
+// ── 光照 ──────────────────────────────────────
+const ambient = new THREE.AmbientLight('#8899bb', 1.4);
+scene.add(ambient);
+
+const sun = new THREE.DirectionalLight('#ffffff', 2.5);
+sun.position.set(300, 400, 200);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 2000;
+sun.shadow.camera.left = -500;
+sun.shadow.camera.right = 500;
+sun.shadow.camera.top = 500;
+sun.shadow.camera.bottom = -500;
+scene.add(sun);
+
+const hemi = new THREE.HemisphereLight('#8899cc', '#334455', 0.6);
+scene.add(hemi);
+
+// ── 辅助元素 ──────────────────────────────────
+// 地面网格（方形，匹配 Minecraft 坐标风格）
+const gridSize = 600;
+const gridDiv = 30;
+const grid = new THREE.GridHelper(gridSize, gridDiv, '#333840', '#2a2d35');
+grid.position.y = GROUND_Y;
+scene.add(grid);
+
+// 地面半透明平面
+const groundGeo = new THREE.PlaneGeometry(gridSize * 2, gridSize * 2);
+const groundMat = new THREE.MeshStandardMaterial({ color: '#22262e', roughness: 1, metalness: 0, transparent: true, opacity: 0.5 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = GROUND_Y - 0.5;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// 坐标轴小指示器
+const axisLen = 80;
+const axisHelper = (dir, color, origin) => {
+  const mat = new THREE.MeshBasicMaterial({ color });
+  const geo = new THREE.CylinderGeometry(1, 1, axisLen, 8);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(origin).addScaledVector(dir, axisLen / 2);
+  if (dir.y === 1) mesh.position.y += axisLen/2;
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  scene.add(mesh);
+};
+const axisOrigin = new THREE.Vector3(-250, GROUND_Y, 520);
+// 暂时隐藏坐标轴，保持画面简洁；如需开启取消注释
+// axisHelper(new THREE.Vector3(1,0,0), '#ff4444', axisOrigin); // X 红
+// axisHelper(new THREE.Vector3(0,1,0), '#44ff44', axisOrigin); // Y 绿
+// axisHelper(new THREE.Vector3(0,0,1), '#4444ff', axisOrigin); // Z 蓝
+
+// ── 构建线路索引 ──────────────────────────────
+const lineMap = {};
+for (const l of data.lines) lineMap[l.lineId] = l;
+
+// 收集每个线路的所有层级（用于连线）
+const lineLevels = {}; // lineId → [{station, levelObj}]
+for (const st of data.stations) {
+  for (const lv of st.levels) {
+    if (!lineLevels[lv.lineId]) lineLevels[lv.lineId] = [];
+    lineLevels[lv.lineId].push({ station: st, level: lv });
+  }
+}
+
+// ── 工具函数 ──────────────────────────────────
+function toVec3(coord) {
+  return new THREE.Vector3(coord.x, coord.y, coord.z);
+}
+
+// ── 绘制线路连线 ──────────────────────────────
+const lineGroup = new THREE.Group();
+scene.add(lineGroup);
+
+for (const [lineId, items] of Object.entries(lineLevels)) {
+  const line = lineMap[lineId];
+  if (!line) continue;
+  const color = new THREE.Color(line.color || '#888');
+  const isPlanned = line.type === 'Planned';
+
+  if (items.length < 2) continue; // 单点不连线
+
+  // 按 x 坐标排序（东西走向为主）
+  const sorted = [...items].sort((a, b) => a.level.coordinate.x - b.level.coordinate.x);
+  const points = sorted.map(it => toVec3(it.level.coordinate));
+
+  // 折线：用多个线段组成
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5);
+  const curvePoints = curve.getPoints(points.length * 16);
+  const geo = new THREE.BufferGeometry().setFromPoints(curvePoints);
+
+  let mat;
+  if (isPlanned) {
+    mat = new THREE.LineDashedMaterial({ color, linewidth: 2, dashSize: 8, gapSize: 5 });
+  } else {
+    mat = new THREE.LineBasicMaterial({ color, linewidth: 2 });
+  }
+  const lineObj = new THREE.Line(geo, mat);
+  if (isPlanned) lineObj.computeLineDistances();
+  lineObj.castShadow = true;
+  lineGroup.add(lineObj);
+
+  // 加粗发光线（视觉强调）
+  const glowGeo = new THREE.BufferGeometry().setFromPoints(curvePoints);
+  const glowMat = new THREE.LineBasicMaterial({ color, linewidth: 1, transparent: true, opacity: 0.3 });
+  const glowLine = new THREE.Line(glowGeo, glowMat);
+  lineGroup.add(glowLine);
+}
+
+// ── 绘制同站不同层级的垂直连线 ────────────────
+const stationLevelGroups = {}; // stationId → levels
+for (const st of data.stations) {
+  stationLevelGroups[st.stationId] = st.levels;
+}
+
+for (const [stationId, levels] of Object.entries(stationLevelGroups)) {
+  if (levels.length < 2) continue;
+  // 按 level 数值排序
+  const sorted = [...levels].sort((a, b) => a.level - b.level);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = toVec3(sorted[i].coordinate);
+    const b = toVec3(sorted[i + 1].coordinate);
+    const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+    const mat = new THREE.LineDashedMaterial({ color: '#666688', linewidth: 1, dashSize: 3, gapSize: 4, transparent: true, opacity: 0.5 });
+    const dash = new THREE.Line(geo, mat);
+    dash.computeLineDistances();
+    lineGroup.add(dash);
+  }
+}
+
+// ── 绘制站点 ──────────────────────────────────
+const stationGroup = new THREE.Group();
+scene.add(stationGroup);
+
+// 存储站点 mesh 引用用于 hover
+const stationMeshes = []; // { mesh, station, levelObj, line }
+
+// 站点几何体（复用）
+const sphereGeo = new THREE.SphereGeometry(STATION_RADIUS, STATION_SEGMENTS, STATION_SEGMENTS);
+const ringGeo = new THREE.TorusGeometry(STATION_RADIUS + 2.5, 0.8, 16, 48);
+
+for (const st of data.stations) {
+  for (const lv of st.levels) {
+    const line = lineMap[lv.lineId];
+    const color = new THREE.Color(line?.color || '#888');
+    const pos = toVec3(lv.coordinate);
+
+    // 主体球
+    const sphereMat = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.4 });
+    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+    sphere.position.copy(pos);
+    sphere.castShadow = true;
+    sphere.receiveShadow = true;
+    sphere.userData = { station: st, levelObj: lv, line, isStation: true };
+    stationGroup.add(sphere);
+    stationMeshes.push({ mesh: sphere, station: st, levelObj: lv, line });
+
+    // 光环
+    const ringMat = new THREE.MeshStandardMaterial({ color, roughness: 0.2, metalness: 0.6, emissive: color, emissiveIntensity: 0.4 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.copy(pos);
+    ring.rotation.x = Math.PI / 2;
+    ring.castShadow = true;
+    ring.userData = { isDecoration: true };
+    stationGroup.add(ring);
+
+    // 底部光柱（连接地面）
+    const pillarHeight = pos.y - GROUND_Y;
+    if (pillarHeight > 2) {
+      const pillarGeo = new THREE.CylinderGeometry(1.2, 1.2, pillarHeight, 8);
+      const pillarMat = new THREE.MeshStandardMaterial({ color: 0x334455, roughness: 0.7, metalness: 0.3, transparent: true, opacity: 0.25 });
+      const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+      pillar.position.set(pos.x, GROUND_Y + pillarHeight / 2, pos.z);
+      pillar.receiveShadow = true;
+      pillar.userData = { isDecoration: true };
+      stationGroup.add(pillar);
+    }
+  }
+}
+
+// ── CSS 标签 ──────────────────────────────────
+const labelGroup = new THREE.Group();
+scene.add(labelGroup);
+
+for (const st of data.stations) {
+  // 每个站点取第一个 level 的坐标作为标签位置（或取平均值）
+  const avgX = st.levels.reduce((s, l) => s + l.coordinate.x, 0) / st.levels.length;
+  const avgY = st.levels.reduce((s, l) => s + l.coordinate.y, 0) / st.levels.length;
+  const avgZ = st.levels.reduce((s, l) => s + l.coordinate.z, 0) / st.levels.length;
+  const pos = new THREE.Vector3(avgX, avgY + STATION_RADIUS + 5, avgZ);
+
+  const div = document.createElement('div');
+  div.textContent = st.name;
+  div.style.cssText = `
+    color: #ffffff; font-size: 12px; font-weight: 600;
+    text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 3px rgba(0,0,0,0.9);
+    white-space: nowrap; pointer-events: none;
+    letter-spacing: 0.5px;
+  `;
+  const label = new CSS2DObject(div);
+  label.position.copy(pos);
+  label.userData = { isLabel: true };
+  labelGroup.add(label);
+}
+
+// ── Raycaster hover 交互 ──────────────────────
+const raycaster = new THREE.Raycaster();
+raycaster.params.Points.threshold = 10;
+raycaster.params.Line.threshold = 5;
+const mouse = new THREE.Vector2();
+const tooltip = document.getElementById('tooltip');
+
+let hoveredMesh = null;
+
+function onMouseMove(e) {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(stationMeshes.map(s => s.mesh), false);
+
+  if (hits.length > 0) {
+    const obj = hits[0].object;
+    if (obj.userData.isStation && obj !== hoveredMesh) {
+      // 还原上一个 hover
+      if (hoveredMesh) {
+        hoveredMesh.material.emissive.setHex(hoveredMesh.userData.origEmissive);
+        hoveredMesh.material.emissiveIntensity = hoveredMesh.userData.origEmissiveIntensity;
+        hoveredMesh.scale.set(1, 1, 1);
+      }
+      hoveredMesh = obj;
+      // 保存原始值
+      obj.userData.origEmissive = obj.material.emissive.getHex();
+      obj.userData.origEmissiveIntensity = obj.material.emissiveIntensity;
+      // 高亮
+      obj.material.emissive.set('#ffffff');
+      obj.material.emissiveIntensity = 0.6;
+      obj.scale.set(1.35, 1.35, 1.35);
+
+      const { station, levelObj, line } = obj.userData;
+      const date = station.openingDate ? `${station.openingDate.y}-${String(station.openingDate.m).padStart(2,'0')}-${String(station.openingDate.d).padStart(2,'0')}` : '未知';
+      const levelLabel = levelObj.level >= 0 ? `地上 ${levelObj.level} 层` : `地下 ${Math.abs(levelObj.level)} 层`;
+      const dirLabel = levelObj.direction === 'e,w' ? '东西向' : levelObj.direction === 's,n' ? '南北向' : levelObj.direction;
+
+      tooltip.innerHTML = `
+        <div class="tt-name">${station.name}</div>
+        <div class="tt-row">📍 ${station.district} &nbsp;|&nbsp; 🚉 ${station.platformCount} 站台</div>
+        <div class="tt-row">🏗 ${levelLabel} &nbsp;|&nbsp; 🛤 ${dirLabel} &nbsp;|&nbsp; ${levelObj.tracks} 轨</div>
+        <div class="tt-row">📅 开通: ${date}</div>
+        <div style="margin-top:6px;"><span class="tt-line" style="background:${line?.color||'#888'}">${line?.lineName||levelObj.lineId}</span> <span style="font-size:10px;color:#999">${line?.type||''}</span></div>
+      `;
+      tooltip.classList.add('visible');
+      tooltip.style.left = e.clientX + 'px';
+      tooltip.style.top = e.clientY + 'px';
+    }
+  } else {
+    if (hoveredMesh) {
+      hoveredMesh.material.emissive.setHex(hoveredMesh.userData.origEmissive);
+      hoveredMesh.material.emissiveIntensity = hoveredMesh.userData.origEmissiveIntensity;
+      hoveredMesh.scale.set(1, 1, 1);
+      hoveredMesh = null;
+    }
+    tooltip.classList.remove('visible');
+  }
+}
+
+window.addEventListener('mousemove', onMouseMove, { passive: true });
+
+// ── 响应式 ────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  labelRenderer.setSize(container.clientWidth, container.clientHeight);
+});
+
+// ── 渲染循环 ──────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  // 标签始终面向相机
+  for (const child of labelGroup.children) {
+    child.lookAt(camera.position);
+  }
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+animate();
+
+// ── 填充分页信息 ──────────────────────────────
+const sysInfo = data.systemInfo || {};
+document.getElementById('network-name').textContent = sysInfo.network || '轨道交通';
+const lu = data.lastUpdated;
+const luStr = lu ? `${lu.y}-${String(lu.m).padStart(2,'0')}-${String(lu.d).padStart(2,'0')}` : '';
+document.getElementById('update-info').textContent = luStr ? `数据更新: ${luStr}` : '';
+
+// ── 填充图例 ──────────────────────────────────
+const legendList = document.getElementById('legend-list');
+for (const line of data.lines) {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  item.innerHTML = `
+    <span class="legend-dot" style="background:${line.color};box-shadow:0 0 6px ${line.color}"></span>
+    <span>${line.lineName}</span>
+    <span class="legend-badge">${line.type||''}</span>
+  `;
+  legendList.appendChild(item);
+}
+
+console.log(`✅ 轨道交通地图已就绪 — ${data.stations.length} 个站点, ${data.lines.length} 条线路`);
+</script>
+</body>
+</html>
