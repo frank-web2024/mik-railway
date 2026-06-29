@@ -308,33 +308,23 @@ for (const st of data.stations) {
   }
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
   const bw = Math.max(maxX - minX + 20, 28), bh = Math.max(maxZ - minZ + 20, 28);
-
-  // —— 整个站点的大框（白色） ——
-  const boxColor = 0xffffff;
-  const planeGeo = new THREE.PlaneGeometry(bw, bh);
-  const planeMat = new THREE.MeshBasicMaterial({ color: boxColor, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false });
-  const plane = new THREE.Mesh(planeGeo, planeMat);
-  plane.rotation.x = -Math.PI / 2;
-  plane.position.set(cx, GROUND_Y + 0.2, cz);
-  stationGroup.add(plane);
-
-  const edgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(bw, 0.1, bh));
-  const edgeMat = new THREE.LineBasicMaterial({ color: boxColor, transparent: true, opacity: 0.5 });
-  const border = new THREE.LineSegments(edgeGeo, edgeMat);
-  border.position.set(cx, GROUND_Y + 0.3, cz);
-  stationGroup.add(border);
-
-  // 四角立柱
   const maxY = Math.max(...st.levels.map(l => l.coordinate.y));
-  const pH = maxY - GROUND_Y + STATION_RADIUS;
-  for (const [dx, dz] of [[-1,-1],[1,-1],[-1,1],[1,1]]) {
-    const pGeo = new THREE.CylinderGeometry(0.4, 0.4, pH, 6);
-    const pMat = new THREE.MeshStandardMaterial({ color: boxColor, roughness: 0.5, metalness: 0.3, transparent: true, opacity: 0.4 });
-    const p = new THREE.Mesh(pGeo, pMat);
-    p.position.set(cx + dx * bw/2, GROUND_Y + pH/2, cz + dz * bh/2);
-    p.castShadow = true;
-    stationGroup.add(p);
-  }
+  const topY = maxY + STATION_RADIUS * 2;
+  const boxH = topY; // 从 y=0 到顶部
+
+  // —— 整个站点的3D长方体线框（从y=0到顶部，有封顶） ——
+  const boxGeo = new THREE.BoxGeometry(bw, boxH, bh);
+  const edgeGeo = new THREE.EdgesGeometry(boxGeo);
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 });
+  const wireBox = new THREE.LineSegments(edgeGeo, edgeMat);
+  wireBox.position.set(cx, boxH / 2, cz);
+  stationGroup.add(wireBox);
+
+  // 半透明填充面
+  const fillMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false });
+  const fillBox = new THREE.Mesh(boxGeo, fillMat);
+  fillBox.position.copy(wireBox.position);
+  stationGroup.add(fillBox);
 
   // 各层级球体
   for (const lv of st.levels) {
