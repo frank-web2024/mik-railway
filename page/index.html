@@ -487,19 +487,6 @@ window.addEventListener('resize', () => {
 // ── 渲染循环 ──────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
-
-  // 相机动画（俯视切换平滑过渡）
-  if (animating) {
-    const lerpFactor = 0.08;
-    camera.position.lerp(targetPos, lerpFactor);
-    controls.target.lerp(targetLook, lerpFactor);
-    if (camera.position.distanceTo(targetPos) < 0.5 && controls.target.distanceTo(targetLook) < 0.5) {
-      camera.position.copy(targetPos);
-      controls.target.copy(targetLook);
-      animating = false;
-    }
-  }
-
   controls.update();
 
   // 标签面向相机
