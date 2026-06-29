@@ -49,20 +49,6 @@
   }
 
   /* 操作提示 */
-  /* 俯视按钮 */
-  #topview-btn {
-    position: fixed; bottom: 24px; right: 24px; z-index: 10;
-    width: 44px; height: 44px;
-    border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 10px;
-    background: var(--panel-bg); backdrop-filter: blur(12px);
-    color: var(--text); font-size: 20px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.2s, border-color 0.2s;
-  }
-  #topview-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.35); }
-  #topview-btn.active { background: var(--accent); color: #1a1d23; border-color: var(--accent); }
-
   #hint {
     position: fixed; bottom: 80px; right: 24px; z-index: 10;
     background: var(--panel-bg); backdrop-filter: blur(12px);
@@ -103,8 +89,6 @@
     text-decoration:none; transition:border-color 0.2s;
   ">📐 2D 地图</a>
 </div>
-
-<button id="topview-btn" title="切换俯视图">⬇</button>
 
 <div id="legend"><h3>线路图例</h3><div id="legend-list"></div></div>
 <div id="hint"><span>🖱 左键旋转</span> &nbsp;|&nbsp; <span>🖱 中键平移</span> &nbsp;|&nbsp; <span>🖱 右键缩放</span></div>
@@ -439,42 +423,6 @@ function onMouseMove(e) {
 }
 
 window.addEventListener('mousemove', onMouseMove, { passive: true });
-
-// ── 俯视图切换按钮 ────────────────────────────
-const topviewBtn = document.getElementById('topview-btn');
-let isTopView = false;
-const savedTarget = new THREE.Vector3();
-const savedCamPos = new THREE.Vector3();
-const targetPos = new THREE.Vector3();
-const targetLook = new THREE.Vector3();
-let animating = false;
-
-// 预计算场景中心（供俯视使用）
-const allX = data.stations.flatMap(s => s.levels.map(l => l.coordinate.x));
-const allZ = data.stations.flatMap(s => s.levels.map(l => l.coordinate.z));
-const centerX = (Math.min(...allX) + Math.max(...allX)) / 2;
-const centerZ = (Math.min(...allZ) + Math.max(...allZ)) / 2;
-
-topviewBtn.addEventListener('click', () => {
-  isTopView = !isTopView;
-  if (isTopView) {
-    savedCamPos.copy(camera.position);
-    savedTarget.copy(controls.target);
-    // 俯视：飞到场景正上方，解除角度限制允许自由缩放旋转
-    targetPos.set(centerX, 350, centerZ);
-    targetLook.set(centerX, GROUND_Y, centerZ);
-    controls.maxPolarAngle = Math.PI;
-    topviewBtn.textContent = '↺';
-    topviewBtn.classList.add('active');
-  } else {
-    targetPos.copy(savedCamPos);
-    targetLook.copy(savedTarget);
-    controls.maxPolarAngle = Math.PI * 0.75;
-    topviewBtn.textContent = '⬇';
-    topviewBtn.classList.remove('active');
-  }
-  animating = true;
-});
 
 // ── 响应式 ────────────────────────────────────
 window.addEventListener('resize', () => {
