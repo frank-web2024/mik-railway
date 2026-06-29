@@ -296,20 +296,52 @@ for (const [, levels] of Object.entries(stationLevelGroups)) {
 // ── 绘制站点 ──────────────────────────────────
 const stationGroup = new THREE.Group();
 scene.add(stationGroup);
-
-// 存储站点 mesh 引用用于 hover
-const stationMeshes = []; // { mesh, station, levelObj, line }
-
-// 站点几何体（复用）
+const stationMeshes = [];
 const sphereGeo = new THREE.SphereGeometry(STATION_RADIUS, STATION_SEGMENTS, STATION_SEGMENTS);
 
 for (const st of data.stations) {
+  // 先收集站点所有层级的 x/z 范围
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const lv of st.levels) {
+    minX = Math.min(minX, lv.coordinate.x); maxX = Math.max(maxX, lv.coordinate.x);
+    minZ = Math.min(minZ, lv.coordinate.z); maxZ = Math.max(maxZ, lv.coordinate.z);
+  }
+  const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
+  const bw = Math.max(maxX - minX + 20, 28), bh = Math.max(maxZ - minZ + 20, 28);
+
+  // —— 整个站点的大框（白色） ——
+  const boxColor = 0xffffff;
+  const planeGeo = new THREE.PlaneGeometry(bw, bh);
+  const planeMat = new THREE.MeshBasicMaterial({ color: boxColor, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false });
+  const plane = new THREE.Mesh(planeGeo, planeMat);
+  plane.rotation.x = -Math.PI / 2;
+  plane.position.set(cx, GROUND_Y + 0.2, cz);
+  stationGroup.add(plane);
+
+  const edgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(bw, 0.1, bh));
+  const edgeMat = new THREE.LineBasicMaterial({ color: boxColor, transparent: true, opacity: 0.5 });
+  const border = new THREE.LineSegments(edgeGeo, edgeMat);
+  border.position.set(cx, GROUND_Y + 0.3, cz);
+  stationGroup.add(border);
+
+  // 四角立柱
+  const maxY = Math.max(...st.levels.map(l => l.coordinate.y));
+  const pH = maxY - GROUND_Y + STATION_RADIUS;
+  for (const [dx, dz] of [[-1,-1],[1,-1],[-1,1],[1,1]]) {
+    const pGeo = new THREE.CylinderGeometry(0.4, 0.4, pH, 6);
+    const pMat = new THREE.MeshStandardMaterial({ color: boxColor, roughness: 0.5, metalness: 0.3, transparent: true, opacity: 0.4 });
+    const p = new THREE.Mesh(pGeo, pMat);
+    p.position.set(cx + dx * bw/2, GROUND_Y + pH/2, cz + dz * bh/2);
+    p.castShadow = true;
+    stationGroup.add(p);
+  }
+
+  // 各层级球体
   for (const lv of st.levels) {
     const line = lineMap[lv.lineId];
     const color = new THREE.Color(line?.color || '#888');
     const pos = toVec3(lv.coordinate);
 
-    // 主体球
     const sphereMat = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.4 });
     const sphere = new THREE.Mesh(sphereGeo, sphereMat);
     sphere.position.copy(pos);
@@ -318,35 +350,6 @@ for (const st of data.stations) {
     sphere.userData = { station: st, levelObj: lv, line, isStation: true };
     stationGroup.add(sphere);
     stationMeshes.push({ mesh: sphere, station: st, levelObj: lv, line });
-
-    // 站点大框（地面投影框 + 半透明填充）
-    const boxSize = 28;
-    // 地面平面方框
-    const planeGeo = new THREE.PlaneGeometry(boxSize, boxSize);
-    const planeMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false });
-    const plane = new THREE.Mesh(planeGeo, planeMat);
-    plane.rotation.x = -Math.PI / 2;
-    plane.position.set(pos.x, GROUND_Y + 0.2, pos.z);
-    plane.userData = { isDecoration: true };
-    stationGroup.add(plane);
-    // 边框线
-    const edgeGeo2 = new THREE.EdgesGeometry(new THREE.BoxGeometry(boxSize, 0.1, boxSize));
-    const edgeMat2 = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 });
-    const borderLine = new THREE.LineSegments(edgeGeo2, edgeMat2);
-    borderLine.position.set(pos.x, GROUND_Y + 0.3, pos.z);
-    borderLine.userData = { isDecoration: true };
-    stationGroup.add(borderLine);
-    // 四角立柱
-    const pillarH = pos.y - GROUND_Y + STATION_RADIUS;
-    const pillarGeo = new THREE.CylinderGeometry(0.6, 0.6, pillarH, 6);
-    const pillarMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.3, transparent: true, opacity: 0.5 });
-    for (const [dx, dz] of [[-1,-1],[1,-1],[-1,1],[1,1]]) {
-      const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-      pillar.position.set(pos.x + dx * boxSize/2, GROUND_Y + pillarH/2, pos.z + dz * boxSize/2);
-      pillar.castShadow = true;
-      pillar.userData = { isDecoration: true };
-      stationGroup.add(pillar);
-    }
   }
 }
 
@@ -354,26 +357,7 @@ for (const st of data.stations) {
 const labelGroup = new THREE.Group();
 scene.add(labelGroup);
 
-// ── 坐标轴标注 ───────────────────────────────
-const axisGroup = new THREE.Group(); scene.add(axisGroup);
-const axisOrigin = new THREE.Vector3(-250, GROUND_Y, 520);
-const axisLen = 120;
-
-axisGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([axisOrigin, axisOrigin.clone().add(new THREE.Vector3(axisLen,0,0))]), new THREE.LineBasicMaterial({color:'#ff4444'})));
-axisGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([axisOrigin, axisOrigin.clone().add(new THREE.Vector3(0,0,axisLen))]), new THREE.LineBasicMaterial({color:'#4488ff'})));
-axisGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([axisOrigin, axisOrigin.clone().add(new THREE.Vector3(0,axisLen,0))]), new THREE.LineBasicMaterial({color:'#44ff44'})));
-
-for (const [label, color, dx, dy, dz] of [['X','#ff4444',axisLen+12,0,0], ['Y','#44ff44',0,axisLen+12,0], ['Z','#4488ff',0,0,axisLen+12]]) {
-  const div = document.createElement('div');
-  div.textContent = label;
-  div.style.cssText = `color:${color};font-size:11px;font-weight:700;text-shadow:0 0 4px rgba(0,0,0,0.9);pointer-events:none;`;
-  const lbl = new CSS2DObject(div);
-  lbl.position.copy(axisOrigin.clone().add(new THREE.Vector3(dx, dy, dz)));
-  lbl.userData = { isLabel: true };
-  labelGroup.add(lbl);
-}
-
-// 站点标签（含层级数和坐标）
+// ── 站点标签（含层级数和坐标）
 for (const st of data.stations) {
   const avgX = st.levels.reduce((s, l) => s + l.coordinate.x, 0) / st.levels.length;
   const avgY = st.levels.reduce((s, l) => s + l.coordinate.y, 0) / st.levels.length;
