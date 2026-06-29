@@ -26,6 +26,22 @@
   #tooltip .tt-name { font-size:15px; font-weight:600; margin-bottom:4px; }
   #tooltip .tt-line { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; margin-right:4px; color:#fff; }
   #tooltip .tt-row { color:#bbb; font-size:12px; }
+  /* 导航面板 */
+  #nav-panel { position:fixed; top:80px; right:16px; z-index:10; background:var(--panel-bg); backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:14px 16px; color:var(--text); width:280px; font-size:13px; max-height:calc(100vh - 160px); overflow-y:auto; }
+  #nav-panel h3 { font-size:14px; margin:0 0 10px; color:var(--accent); display:flex; align-items:center; justify-content:space-between; }
+  #nav-panel input { width:100%; padding:6px 10px; margin:4px 0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.06); color:var(--text); font-size:13px; outline:none; }
+  #nav-panel input:focus { border-color:var(--accent); }
+  #nav-panel label { font-size:12px; color:var(--text-dim); display:flex; align-items:center; gap:4px; margin:3px 0; cursor:pointer; white-space:nowrap; }
+  #nav-panel input[type=checkbox] { width:14px; height:14px; flex-shrink:0; margin:0; }
+  #nav-panel button { width:100%; padding:8px; margin-top:8px; border-radius:8px; border:none; background:var(--accent); color:#1a1d23; font-weight:600; cursor:pointer; font-size:13px; }
+  #nav-panel button:hover { opacity:0.85; }
+  #nav-result { margin-top:12px; font-size:12px; line-height:1.6; }
+  #nav-result .step { padding:4px 8px; margin:2px 0; border-radius:4px; background:rgba(255,255,255,0.05); }
+  #nav-toggle { cursor:pointer; color:#888; font-size:14px; border:1px solid rgba(255,255,255,0.15); border-radius:4px; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; transition:transform 0.2s; }
+  #nav-toggle:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
+  #nav-body { max-height:500px; overflow:hidden; transition:max-height 0.35s cubic-bezier(0.4,0,0.6,1); }
+  #nav-panel.collapsed #nav-body { max-height:0; }
+  #nav-panel.collapsed { padding-bottom:6px; }
 </style>
 </head>
 <body>
@@ -33,6 +49,19 @@
 <div id="top-bar">
   <div id="title-card"><h1 id="network-name">轨道交通</h1><a href="index.html" style="display:inline-block;background:var(--panel-bg);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:4px 14px;color:var(--text);font-size:12px;text-decoration:none;">🧊 3D 地图</a></div>
 </div>
+<div id="nav-panel">
+  <h3>🧭 路线导航 <span id="nav-toggle">×</span></h3>
+  <div id="nav-body">
+  <input id="nav-from" placeholder="出发站" list="station-list">
+  <input id="nav-to" placeholder="到达站" list="station-list">
+  <datalist id="station-list"></datalist>
+  <label><input type="checkbox" id="nav-cross"> 越野 (步行≤1500格)</label>
+  <label><input type="checkbox" id="nav-detail"> 详细模式</label>
+  <button id="nav-go">查询路线</button>
+  <div id="nav-result"></div>
+  </div>
+</div>
+
 <div id="legend"><h3>线路图例</h3><div id="legend-list"></div></div>
 <div id="hint"><span>🖱 拖拽平移</span> &nbsp;|&nbsp; <span>滚轮缩放</span> &nbsp;|&nbsp; <span>中键复位</span></div>
 <div id="tooltip"></div>
@@ -322,9 +351,15 @@ function render(){
     ctx.fillText(`x${c0.x} y${c0.y} z${c0.z}`, s.x, s.y+24);
   }
   ctx.shadowBlur=0;
+  drawNavHighlight();
 }
 
-// ── UI ────────────────────────────────────────
+// 持续渲染（导航小球动画）
+function animLoop() {
+  if (navResult2) render();
+  requestAnimationFrame(animLoop);
+}
+animLoop();
 const si=data.systemInfo||{};
 document.getElementById('network-name').textContent=si.network||'轨道交通';
 const ll=document.getElementById('legend-list');
@@ -335,6 +370,161 @@ for(const l of data.lines){
 }
 render();
 console.log('✅ 2D 地图就绪');
+
+// ═══════════════════════════════════════════════
+// 导航
+// ═══════════════════════════════════════════════
+const stationList2 = document.getElementById('station-list');
+data.stations.forEach(st => { const o = document.createElement('option'); o.value = st.name; stationList2.appendChild(o); });
+
+function toVec3(c) { return { x: c.x, y: c.y, z: c.z }; }
+function getPathPts(pa, pb, dirA, dirB) {
+  const bendR = 50;
+  if (dirA === dirB) return [{ x: pa.x, z: pa.z }, { x: pb.x, z: pb.z }];
+  const corner = { x: pa.x, z: pa.z };
+  if (dirA === 'e,w' && dirB === 's,n') corner.x = pb.x;
+  else if (dirA === 's,n' && dirB === 'e,w') corner.z = pb.z;
+  const d1 = { x: corner.x - pa.x, z: corner.z - pa.z }, l1 = Math.sqrt(d1.x*d1.x + d1.z*d1.z) || 1;
+  const d2 = { x: corner.x - pb.x, z: corner.z - pb.z }, l2 = Math.sqrt(d2.x*d2.x + d2.z*d2.z) || 1;
+  const r = Math.min(bendR, l1*0.45, l2*0.45);
+  return [
+    { x: pa.x, z: pa.z },
+    { x: corner.x - d1.x/l1*r, z: corner.z - d1.z/l1*r },
+    { x: corner.x, z: corner.z },
+    { x: corner.x - d2.x/l2*r, z: corner.z - d2.z/l2*r },
+    { x: pb.x, z: pb.z }
+  ];
+}
+
+function buildGraph2() {
+  const nodes = {}, adj = {};
+  for (const st of data.stations) for (const lv of st.levels) {
+    const k = `${st.stationId}|${lv.level}|${lv.lineId}`;
+    nodes[k] = { station: st, levelObj: lv, line: lineMap[lv.lineId] };
+    adj[k] = [];
+  }
+  for (const [lid, items] of Object.entries(lineLevels)) {
+    const sorted = [...items].sort((a,b) => a.level.coordinate.x - b.level.coordinate.x);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const a = sorted[i], b = sorted[i+1];
+      const kA = `${a.station.stationId}|${a.level.level}|${lid}`;
+      const kB = `${b.station.stationId}|${b.level.level}|${lid}`;
+      const pts = getPathPts(a.level.coordinate, b.level.coordinate, a.level.direction, b.level.direction);
+      let d = 0; for (let p = 1; p < pts.length; p++) d += Math.hypot(pts[p].x-pts[p-1].x, pts[p].z-pts[p-1].z);
+      adj[kA].push({ key: kB, dist: Math.round(d)||10, type: 'line', lineId: lid, pathPts: pts });
+      adj[kB].push({ key: kA, dist: Math.round(d)||10, type: 'line', lineId: lid, pathPts: [...pts].reverse() });
+    }
+  }
+  for (const st of data.stations) {
+    for (let i = 0; i < st.levels.length; i++) for (let j = i+1; j < st.levels.length; j++) {
+      const a = st.levels[i], b = st.levels[j];
+      adj[`${st.stationId}|${a.level}|${a.lineId}`].push({ key: `${st.stationId}|${b.level}|${b.lineId}`, dist: 15, type: 'transfer', pathPts: [{x:a.coordinate.x,z:a.coordinate.z},{x:b.coordinate.x,z:b.coordinate.z}] });
+      adj[`${st.stationId}|${b.level}|${b.lineId}`].push({ key: `${st.stationId}|${a.level}|${a.lineId}`, dist: 15, type: 'transfer', pathPts: [{x:b.coordinate.x,z:b.coordinate.z},{x:a.coordinate.x,z:a.coordinate.z}] });
+    }
+  }
+  return { nodes, adj };
+}
+
+function dijkstra2(g, sks, endId, cross) {
+  const { nodes, adj } = g;
+  const dist = {}, prev = {}, prevE = {}, pq = [];
+  for (const k of Object.keys(nodes)) dist[k] = Infinity;
+  for (const sk of sks) { if (nodes[sk]) { dist[sk] = 0; pq.push({k:sk,d:0}); } }
+  while (pq.length) {
+    pq.sort((a,b) => a.d-b.d); const {k} = pq.shift();
+    if (dist[k] === Infinity) continue;
+    const nd = nodes[k]; if (!nd) continue;
+    if (nd.station.stationId === endId) {
+      const path = []; let cur = k;
+      while (cur) { path.unshift(cur); cur = prev[cur]; }
+      const segs = [];
+      for (let i = 1; i < path.length; i++) { const e = prevE[path[i]]; segs.push({ from:path[i-1], to:path[i], type:e?e.type:'?', lineId:e?e.lineId:null, pathPts:e?e.pathPts:null }); }
+      return { path, segs, dist: dist[k] };
+    }
+    for (const e of (adj[k]||[])) {
+      if (dist[e.key] !== undefined && dist[k]+e.dist >= dist[e.key]) continue;
+      dist[e.key] = dist[k]+e.dist; prev[e.key] = k; prevE[e.key] = e; pq.push({k:e.key,d:dist[e.key]});
+    }
+    if (cross && nd) for (const [nk, n2] of Object.entries(nodes)) {
+      if (dist[nk] !== undefined && dist[nk] !== Infinity) continue;
+      if (n2.station.stationId === nd.station.stationId) continue;
+      const d = Math.round(Math.hypot(nd.levelObj.coordinate.x-n2.levelObj.coordinate.x, nd.levelObj.coordinate.z-n2.levelObj.coordinate.z));
+      if (d <= 1500 && dist[k]+d < (dist[nk]||Infinity)) { dist[nk]=dist[k]+d; prev[nk]=k; prevE[nk]={type:'walk',dist:d}; pq.push({k:nk,d:dist[nk]}); }
+    }
+  }
+  return null;
+}
+
+let navResult2 = null;
+document.getElementById('nav-toggle').onclick = function(){
+  const p = document.getElementById('nav-panel');
+  p.classList.toggle('collapsed');
+  this.style.transform = 'scale(0.8)';
+  setTimeout(() => { this.style.transform = 'scale(1)'; this.textContent = p.classList.contains('collapsed')?'+':'×'; }, 100);
+};
+
+document.getElementById('nav-go').addEventListener('click', () => {
+  const fn = document.getElementById('nav-from').value.trim();
+  const tn = document.getElementById('nav-to').value.trim();
+  const r = document.getElementById('nav-result');
+  if (!fn || !tn) { r.innerHTML = '<span style="color:#f88;">请输入出发站和到达站</span>'; navResult2 = null; return; }
+  const fs = data.stations.find(s => s.name === fn);
+  const ts = data.stations.find(s => s.name === tn);
+  if (!fs || !ts) { r.innerHTML = `<span style="color:#f88;">未找到</span>`; navResult2 = null; return; }
+  if (fs === ts) { r.innerHTML = '<span style="color:#f88;">相同站点</span>'; navResult2 = null; return; }
+  const g = buildGraph2();
+  const sks = fs.levels.map(lv => `${fs.stationId}|${lv.level}|${lv.lineId}`);
+  const result = dijkstra2(g, sks, ts.stationId, document.getElementById('nav-cross').checked);
+  if (!result) { r.innerHTML = '<span style="color:#f88;">无可行路线</span>'; navResult2 = null; return; }
+  navResult2 = result;
+  const detail = document.getElementById('nav-detail').checked;
+  let h = `<div style="font-weight:600;margin-bottom:8px;">🚩 ${fs.name} → ${ts.name} <span style="color:#4fc3f7;">${result.dist}格</span></div>`;
+  let n = 1, tr = 0;
+  for (const seg of result.segs) {
+    const na = g.nodes[seg.from], nb = g.nodes[seg.to];
+    if (!na || !nb) continue;
+    const sd = Math.round(Math.hypot(na.levelObj.coordinate.x-nb.levelObj.coordinate.x, na.levelObj.coordinate.z-nb.levelObj.coordinate.z));
+    if (seg.type === 'transfer') h += `<div class="step" style="background:rgba(255,170,0,0.15);">🔄 换乘: ${na.station.name} ${na.line?.lineName||'?'}→${nb.line?.lineName||'?'}</div>`;
+    else if (seg.type === 'walk') h += `<div class="step" style="background:rgba(255,112,67,0.15);">🚶 步行: ${na.station.name}→${nb.station.name} (${sd}格)</div>`;
+    else { tr += sd; const dir = na.levelObj.coordinate.x < nb.levelObj.coordinate.x?'东':na.levelObj.coordinate.x > nb.levelObj.coordinate.x?'西':na.levelObj.coordinate.z < nb.levelObj.coordinate.z?'南':'北'; h += `<div class="step">${n++}. 🚆 ${na.line?.lineName||seg.lineId}: ${na.station.name}→${nb.station.name} ${sd}格 往${dir}${detail?` | 区间${sd}格`:''}</div>`; }
+  }
+  if (detail) h += `<div class="step" style="color:#888;font-size:11px;">📊 乘坐${tr}格 | 换乘${result.segs.filter(s=>s.type==='transfer').length}次</div>`;
+  h += `<div class="step" style="color:#4fc3f7;">🏁 ${ts.name}</div>`;
+  r.innerHTML = h;
+});
+
+// 导航高亮绘制（在render中调用）
+function drawNavHighlight() {
+  if (!navResult2) return;
+  const now = performance.now() / 1000;
+  for (const seg of navResult2.segs) {
+    const pts = seg.pathPts;
+    if (!pts || pts.length < 2) continue;
+    const color = seg.type === 'transfer' ? '#ffaa00' : seg.type === 'walk' ? '#ff7043' : '#ffeb3b';
+    // 管道线
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 8; ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    const s0 = w2s(pts[0].x, pts[0].z); ctx.moveTo(s0.x, s0.y);
+    for (let i = 1; i < pts.length; i++) { const s = w2s(pts[i].x, pts[i].z); ctx.lineTo(s.x, s.y); }
+    ctx.stroke(); ctx.restore();
+    // 动画小球
+    let totalL = 0; const lens = [];
+    for (let i = 1; i < pts.length; i++) { lens.push(Math.hypot(pts[i].x-pts[i-1].x, pts[i].z-pts[i-1].z)); totalL += lens[lens.length-1]; }
+    const count = Math.max(3, Math.floor(totalL / 100));
+    for (let a = 0; a < count; a++) {
+      const prog = ((now * 0.15) % 1 + a/count) % 1;
+      let target = prog * totalL, acc = 0;
+      let pi = 0;
+      for (; pi < lens.length; pi++) { if (acc + lens[pi] > target) break; acc += lens[pi]; }
+      const t = pi < lens.length ? (target - acc) / lens[pi] : 1;
+      const p0 = pts[Math.min(pi, pts.length-1)], p1 = pts[Math.min(pi+1, pts.length-1)];
+      const bx = p0.x + (p1.x - p0.x) * t, bz = p0.z + (p1.z - p0.z) * t;
+      const bs = w2s(bx, bz);
+      ctx.beginPath(); ctx.arc(bs.x, bs.y, 6, 0, Math.PI*2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+    }
+  }
+}
 </script>
 </body>
 </html>
