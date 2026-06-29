@@ -540,6 +540,9 @@ function animate() {
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
 }
+// 导航小球动画数据
+let navBalls = [];
+
 animate();
 
 // ── 填充分页信息 ──────────────────────────────
@@ -574,8 +577,6 @@ const navCross = document.getElementById('nav-cross');
 const navGo = document.getElementById('nav-go');
 const stationList = document.getElementById('station-list');
 const highlightGroup = new THREE.Group(); scene.add(highlightGroup);
-let navBalls = []; // 导航小球动画数据
-
 data.stations.forEach(st => {
   const opt = document.createElement('option');
   opt.value = st.name; stationList.appendChild(opt);
