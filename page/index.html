@@ -267,7 +267,7 @@ for (const [lineId, items] of Object.entries(lineLevels)) {
   // 方向变化处插入直角拐弯点
   // 逐段：直线 + 拐弯处贝塞尔弧线
   const fullPath = new THREE.CurvePath();
-  const bendR = 30; // 弧半径
+  const bendR = 50; // 弧半径
   for (let i = 0; i < sorted.length; i++) {
     const a = sorted[i].level;
     const pa = toVec3(a.coordinate);

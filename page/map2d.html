@@ -212,27 +212,54 @@ function render(){
   for(const [lid, items] of Object.entries(lineLevels)){
     const line=lineMap[lid]; if(!line||items.length<2) continue;
     const sorted=[...items].sort((a,b)=>a.level.coordinate.x-b.level.coordinate.x);
-    // 方向变化处插入直角拐弯点
-    const pts=[];
-    for(let i=0;i<sorted.length;i++){
-      const a=sorted[i].level;
-      pts.push({x:a.coordinate.x, z:a.coordinate.z});
-      if(i<sorted.length-1){
-        const b=sorted[i+1].level;
-        if(a.direction!==b.direction){
-          const c={x:a.coordinate.x, z:a.coordinate.z};
-          if(a.direction==='e,w'&&b.direction==='s,n') c.x=b.coordinate.x;
-          else if(a.direction==='s,n'&&b.direction==='e,w') c.z=b.coordinate.z;
-          pts.push(c);
-        }
+    // 逐段绘制（直线 + 弧线拐弯）
+    const bendR2=50;
+    ctx.save();
+    ctx.strokeStyle=line.color;
+    ctx.lineWidth=line.type==='Planned'?2.5:4;
+    ctx.globalAlpha=line.type==='Planned'?0.5:1;
+    if(line.type==='Planned') ctx.setLineDash([8,5]);
+    ctx.beginPath();
+    for(let i=1;i<sorted.length;i++){
+      const pa=sorted[i-1].level, pb=sorted[i].level;
+      const pa2=w2s(pa.coordinate.x, pa.coordinate.z);
+      const pb2=w2s(pb.coordinate.x, pb.coordinate.z);
+      if(pa.direction!==pb.direction){
+        // 拐弯：画直线到弧起点 → 弧 → 到终点
+        const corner={x:pa.coordinate.x, z:pa.coordinate.z};
+        if(pa.direction==='e,w'&&pb.direction==='s,n') corner.x=pb.coordinate.x;
+        else if(pa.direction==='s,n'&&pb.direction==='e,w') corner.z=pb.coordinate.z;
+        const cornerS=w2s(corner.x, corner.z);
+        const d1={x:corner.x-pa.coordinate.x, z:corner.z-pa.coordinate.z};
+        const d2={x:corner.x-pb.coordinate.x, z:corner.z-pb.coordinate.z};
+        const l1=Math.sqrt(d1.x*d1.x+d1.z*d1.z), l2=Math.sqrt(d2.x*d2.x+d2.z*d2.z);
+        const r=Math.min(bendR2, l1*0.45, l2*0.45);
+        const c1s=w2s(corner.x-d1.x/l1*r, corner.z-d1.z/l1*r);
+        const c2s=w2s(corner.x-d2.x/l2*r, corner.z-d2.z/l2*r);
+        if(i===1||(i>1&&sorted[i-2].level.direction===pa.direction)) ctx.moveTo(pa2.x, pa2.y);
+        ctx.lineTo(c1s.x, c1s.y);
+        ctx.quadraticCurveTo(cornerS.x, cornerS.y, c2s.x, c2s.y);
+        ctx.lineTo(pb2.x, pb2.y);
+      }else{
+        if(i===1) ctx.moveTo(pa2.x, pa2.y);
+        ctx.lineTo(pb2.x, pb2.y);
       }
     }
-    if(line.type==='Planned'){
-      drawLine(pts, line.color, 2.5, [8,5], 0.5);
-    }else{
-      drawLine(pts, line.color, 4, null, 1);
-      // 细光晕
-      drawLine(pts, line.color, 8, null, 0.15);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    // 光晕（仅Metro）
+    if(line.type!=='Planned'){
+      ctx.save();
+      ctx.strokeStyle=line.color; ctx.lineWidth=8; ctx.globalAlpha=0.15;
+      // 复用相同路径，简化：直接用原pts画粗线
+      const allPts=[];
+      for(let i=0;i<sorted.length;i++) allPts.push({x:sorted[i].level.coordinate.x, z:sorted[i].level.coordinate.z});
+      ctx.beginPath();
+      const s0=w2s(allPts[0].x, allPts[0].z); ctx.moveTo(s0.x, s0.y);
+      for(let i=1;i<allPts.length;i++){ const s=w2s(allPts[i].x, allPts[i].z); ctx.lineTo(s.x, s.y); }
+      ctx.stroke();
+      ctx.restore();
     }
   }
 
