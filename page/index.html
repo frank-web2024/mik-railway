@@ -574,6 +574,7 @@ const navCross = document.getElementById('nav-cross');
 const navGo = document.getElementById('nav-go');
 const stationList = document.getElementById('station-list');
 const highlightGroup = new THREE.Group(); scene.add(highlightGroup);
+let navBalls = []; // 导航小球动画数据
 
 data.stations.forEach(st => {
   const opt = document.createElement('option');
@@ -679,7 +680,6 @@ function dijkstra(graph, startKeys, endStationId, allowCross) {
 }
 
 const navDetail = document.getElementById('nav-detail');
-let navBalls = []; // {mesh, curve, offset} 用于动画
 
 function highlightPath(result, graph) {
   highlightGroup.clear();
