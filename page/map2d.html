@@ -168,18 +168,20 @@ function render(){
   if(bgImgs.every(i=>i)){
     const bx0=Math.min(...allX), bx1=Math.max(...allX);
     const bz0=Math.min(...allZ), bz1=Math.max(...allZ);
-    const bpadX=60, bpadZ=15;
-    const rx0=bx0-bpadX, rx1=bx1+bpadX, rz0=bz0-bpadZ, rz1=bz1+bpadZ;
-    const bw=rx1-rx0, bh=rz1-rz0;
-    // 2x2 格子
+    const cx=(bx0+bx1)/2, cz=(bz0+bz1)/2;
+    // 统一用较大的数据跨度 + padding 作为正方形边长
+    const pad=70;
+    const half = Math.max(bx1-bx0, bz1-bz0)/2 + pad;
+    // 2x2 正方形格子
+    const cell=half;
     const slots2d=[
-      {i:0, x:rx0+bw/4*3, z:rz0+bh/4*3, w:bw/2, h:bh/2}, // 地图1 ++
-      {i:1, x:rx0+bw/4,   z:rz0+bh/4*3, w:bw/2, h:bh/2}, // 地图2 -+
-      {i:2, x:rx0+bw/4*3, z:rz0+bh/4,   w:bw/2, h:bh/2}, // 地图3 +-
-      {i:3, x:rx0+bw/4,   z:rz0+bh/4,   w:bw/2, h:bh/2}, // 地图4 --
+      {i:0, x:cx+cell/2, z:cz+cell/2}, // 地图1 ++
+      {i:1, x:cx-cell/2, z:cz+cell/2}, // 地图2 -+
+      {i:2, x:cx+cell/2, z:cz-cell/2}, // 地图3 +-
+      {i:3, x:cx-cell/2, z:cz-cell/2}, // 地图4 --
     ];
     slots2d.forEach(s=>{
-      const tl=w2s(s.x-s.w/2, s.z+s.h/2), br=w2s(s.x+s.w/2, s.z-s.h/2);
+      const tl=w2s(s.x-cell/2, s.z+cell/2), br=w2s(s.x+cell/2, s.z-cell/2);
       ctx.drawImage(bgImgs[s.i], tl.x, tl.y, br.x-tl.x, br.y-tl.y);
     });
   }
