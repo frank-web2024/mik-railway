@@ -69,6 +69,7 @@
 <script type="module">
 const res = await fetch('railway_data.json');
 const data = await res.json();
+let navResult2 = null;
 
 // 加载地板图片
 const bgImgs = [];
@@ -368,7 +369,6 @@ for(const l of data.lines){
   d.innerHTML=`<span class="legend-dot" style="background:${l.color};box-shadow:0 0 6px ${l.color}"></span><span>${l.lineName}</span><span class="legend-badge">${l.type||''}</span>`;
   ll.appendChild(d);
 }
-let navResult2 = null;
 render();
 console.log('✅ 2D 地图就绪');
 
