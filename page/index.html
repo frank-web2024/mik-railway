@@ -102,8 +102,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
-// ── 数据（内嵌，无需 HTTP 服务器即可打开） ────
-const data = {"version":"1.1","lastUpdated":{"y":2025,"m":12,"d":29},"systemInfo":{"network":"轨道交通"},"lines":[{"lineId":"L001","lineName":"Line XBRM1","description":"x轴边界轨道线","color":"#D32F2F","type":"Metro"},{"lineId":"L002","lineName":"Line 404NOTFOUND","description":"未命名线路","color":"#388E3C","type":"Planned"}],"stations":[{"stationId":"ST001","name":"木耳镇站","district":"主城区","openingDate":{"y":2025,"m":12,"d":29},"platformCount":2,"levels":[{"level":2,"coordinate":{"x":126,"y":79,"z":553},"direction":"e,w","lineId":"L001","tracks":2},{"level":-1,"coordinate":{"x":111,"y":41,"z":530},"direction":"s,n","lineId":"L002","tracks":2}]},{"stationId":"ST002","name":"未命名站","district":"未命名区","openingDate":{"y":2025,"m":12,"d":29},"platformCount":1,"levels":[{"level":1,"coordinate":{"x":-232,"y":106,"z":553},"direction":"e,w","lineId":"L001","tracks":2}]}]};
+// ── 数据加载 ──────────────────────────────────
+const res = await fetch('railway_data.json');
+const data = await res.json();
 
 // ── 常量 ──────────────────────────────────────
 const STATION_RADIUS = 6;
