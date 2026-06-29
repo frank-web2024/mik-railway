@@ -50,7 +50,7 @@
 
   /* 操作提示 */
   #hint {
-    position: fixed; bottom: 80px; right: 24px; z-index: 10;
+    position: fixed; bottom: 24px; right: 24px; z-index: 10;
     background: var(--panel-bg); backdrop-filter: blur(12px);
     border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
     padding: 10px 16px; color: var(--text-dim); font-size: 12px;
@@ -124,7 +124,7 @@ const STATION_SEGMENTS = 32;
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#1a1d23');
-scene.fog = new THREE.Fog('#1a1d23', 2000, 8000);
+scene.fog = new THREE.Fog('#1a1d23', 2500, 10000);
 
 const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 5, 8000);
 camera.position.set(350, 300, 800);
@@ -193,6 +193,38 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = GROUND_Y - 0.5;
 ground.receiveShadow = true;
 scene.add(ground);
+
+// ── 背景图平面 ────────────────────────────────
+const bgLoader = new THREE.TextureLoader();
+const bgFiles = ['地图1.png','地图2.png','地图3.png','地图4.png'];
+// 四边位置：南(z-)、北(z+)、西(x-)、东(x+)
+const pad = 120;
+const allX2 = data.stations.flatMap(s => s.levels.map(l => l.coordinate.x));
+const allZ2 = data.stations.flatMap(s => s.levels.map(l => l.coordinate.z));
+const bgX0 = Math.min(...allX2) - pad, bgX1 = Math.max(...allX2) + pad;
+const bgZ0 = Math.min(...allZ2) - pad, bgZ1 = Math.max(...allZ2) + pad;
+const bgW = bgX1 - bgX0, bgD = bgZ1 - bgZ0;
+const bgH = 180;
+const bgCY = GROUND_Y + bgH / 2;
+
+const bgPlanes = [
+  { file: bgFiles[0], pos:[bgX0 + bgW/2, bgCY, bgZ0], rot:[0,0,0],           w:bgW, h:bgH }, // 南
+  { file: bgFiles[1], pos:[bgX0 + bgW/2, bgCY, bgZ1], rot:[0,Math.PI,0],     w:bgW, h:bgH }, // 北
+  { file: bgFiles[2], pos:[bgX0, bgCY, bgZ0 + bgD/2], rot:[0,Math.PI/2,0],   w:bgD, h:bgH }, // 西
+  { file: bgFiles[3], pos:[bgX1, bgCY, bgZ0 + bgD/2], rot:[0,-Math.PI/2,0],  w:bgD, h:bgH }, // 东
+];
+
+bgPlanes.forEach(({file, pos, rot, w, h}) => {
+  bgLoader.load(file, tex => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const geo = new THREE.PlaneGeometry(w, h);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, depthWrite: false });
+    const plane = new THREE.Mesh(geo, mat);
+    plane.position.set(...pos);
+    plane.rotation.set(...rot);
+    scene.add(plane);
+  });
+});
 
 
 // ── 构建线路索引 ──────────────────────────────
