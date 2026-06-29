@@ -567,110 +567,86 @@ const navGo = document.getElementById('nav-go');
 const stationList = document.getElementById('station-list');
 const highlightGroup = new THREE.Group(); scene.add(highlightGroup);
 
-// 填充站点建议
 data.stations.forEach(st => {
   const opt = document.createElement('option');
   opt.value = st.name; stationList.appendChild(opt);
 });
 
-// 构建图：节点 = 每个level
 function buildGraph() {
-  const nodes = {}; // key → {station, levelObj, line}
-  const edges = []; // [{from, to, dist, type:'line'|'transfer'}]
-
-  // 所有level作为节点
+  const nodes = {};
+  const adj = {}; // key → [{key, dist, type, lineId, edgeObj}]
   for (const st of data.stations) for (const lv of st.levels) {
     const key = `${st.stationId}|${lv.level}|${lv.lineId}`;
     nodes[key] = { station: st, levelObj: lv, line: lineMap[lv.lineId] };
+    adj[key] = [];
   }
-
-  // 同线路相邻站点连线
+  // 同线路相邻站点
   for (const [lid, items] of Object.entries(lineLevels)) {
     const sorted = [...items].sort((a,b) => a.level.coordinate.x - b.level.coordinate.x);
     for (let i = 0; i < sorted.length - 1; i++) {
       const a = sorted[i], b = sorted[i+1];
       const kA = `${a.station.stationId}|${a.level.level}|${lid}`;
       const kB = `${b.station.stationId}|${b.level.level}|${lid}`;
-      const d = a.level.coordinate.x !== b.level.coordinate.x || a.level.coordinate.z !== b.level.coordinate.z
-        ? Math.sqrt((a.level.coordinate.x-b.level.coordinate.x)**2 + (a.level.coordinate.z-b.level.coordinate.z)**2)
-        : 10;
-      edges.push({ from: kA, to: kB, dist: Math.round(d), type: 'line', lineId: lid });
+      const d = Math.round(Math.sqrt((a.level.coordinate.x-b.level.coordinate.x)**2+(a.level.coordinate.z-b.level.coordinate.z)**2)) || 10;
+      adj[kA].push({ key: kB, dist: d, type: 'line', lineId: lid });
+      adj[kB].push({ key: kA, dist: d, type: 'line', lineId: lid });
     }
   }
-
   // 同站换乘
   for (const st of data.stations) {
     for (let i = 0; i < st.levels.length; i++) {
       for (let j = i + 1; j < st.levels.length; j++) {
         const a = st.levels[i], b = st.levels[j];
-        edges.push({
-          from: `${st.stationId}|${a.level}|${a.lineId}`,
-          to: `${st.stationId}|${b.level}|${b.lineId}`,
-          dist: 30, type: 'transfer'
-        });
+        const kA = `${st.stationId}|${a.level}|${a.lineId}`;
+        const kB = `${st.stationId}|${b.level}|${b.lineId}`;
+        adj[kA].push({ key: kB, dist: 20, type: 'transfer' });
+        adj[kB].push({ key: kA, dist: 20, type: 'transfer' });
       }
     }
   }
-
-  return { nodes, edges };
+  return { nodes, adj };
 }
 
-// Dijkstra
 function dijkstra(graph, startKeys, endStationId, allowCross) {
-  const { nodes, edges } = graph;
-  const dist = {}, prev = {}, visited = new Set();
-  const pq = []; // [{key, dist}]
-
+  const { nodes, adj } = graph;
+  const dist = {}, prev = {}, prevEdge = {};
+  const pq = [];
   for (const k of Object.keys(nodes)) dist[k] = Infinity;
-  for (const sk of startKeys) {
-    if (!nodes[sk]) continue;
-    dist[sk] = 0; pq.push({ key: sk, dist: 0 });
-  }
-
+  for (const sk of startKeys) { if (nodes[sk]) { dist[sk] = 0; pq.push({k:sk,d:0}); } }
   while (pq.length) {
-    pq.sort((a,b) => a.dist - b.dist);
-    const { key } = pq.shift();
-    if (visited.has(key)) continue;
-    visited.add(key);
-    const node = nodes[key];
-    if (!node) continue;
+    pq.sort((a,b) => a.d - b.d);
+    const {k} = pq.shift();
+    if (dist[k] === Infinity) continue;
+    const node = nodes[k]; if (!node) continue;
     if (node.station.stationId === endStationId) {
-      // 回溯路径
-      const path = []; let cur = key;
+      const path = []; let cur = k;
       while (cur) { path.unshift(cur); cur = prev[cur]; }
-      return { path, dist: dist[key] };
-    }
-
-    for (const e of edges) {
-      let nd;
-      if (e.from === key) nd = e.to;
-      else if (e.to === key) nd = e.from;
-      else continue;
-      if (visited.has(nd)) continue;
-      if (!nodes[nd]) continue;
-      const nd2 = dist[key] + e.dist;
-      if (nd2 < dist[nd]) {
-        dist[nd] = nd2;
-        prev[nd] = key;
-        pq.push({ key: nd, dist: nd2 });
+      const segments = [];
+      for (let i = 1; i < path.length; i++) {
+        const e = prevEdge[path[i]];
+        segments.push({ from: path[i-1], to: path[i], type: e ? e.type : '?', lineId: e ? e.lineId : null });
       }
+      return { path, segments, dist: dist[k] };
     }
-
-    // 越野
+    for (const e of (adj[k] || [])) {
+      if (dist[e.key] !== undefined && dist[k] + e.dist >= dist[e.key]) continue;
+      dist[e.key] = dist[k] + e.dist;
+      prev[e.key] = k;
+      prevEdge[e.key] = e;
+      pq.push({ k: e.key, d: dist[e.key] });
+    }
     if (allowCross && node) {
       for (const [nk, n2] of Object.entries(nodes)) {
-        if (visited.has(nk) || n2.station.stationId === node.station.stationId) continue;
-        const d = Math.sqrt(
-          (node.levelObj.coordinate.x - n2.levelObj.coordinate.x)**2 +
-          (node.levelObj.coordinate.z - n2.levelObj.coordinate.z)**2
-        );
-        if (d <= 1500) {
-          const nd2 = dist[key] + Math.round(d);
-          if (nd2 < dist[nk]) {
-            dist[nk] = nd2;
-            prev[nk] = key;
-            pq.push({ key: nk, dist: nd2 });
-          }
+        if (dist[nk] !== undefined && dist[nk] !== Infinity) continue;
+        if (n2.station.stationId === node.station.stationId) continue;
+        const d = Math.round(Math.sqrt(
+          (node.levelObj.coordinate.x-n2.levelObj.coordinate.x)**2+
+          (node.levelObj.coordinate.z-n2.levelObj.coordinate.z)**2));
+        if (d <= 1500 && dist[k] + d < (dist[nk]||Infinity)) {
+          dist[nk] = dist[k] + d;
+          prev[nk] = k;
+          prevEdge[nk] = { type: 'walk', dist: d };
+          pq.push({ k: nk, d: dist[nk] });
         }
       }
     }
@@ -678,74 +654,73 @@ function dijkstra(graph, startKeys, endStationId, allowCross) {
   return null;
 }
 
-// 高亮路径
-function highlightPath(pathKeys, graph) {
+function highlightPath(result, graph) {
   highlightGroup.clear();
-  if (!pathKeys) return;
-  const pts = [];
-  for (const k of pathKeys) {
-    const n = graph.nodes[k];
-    if (n) pts.push(toVec3(n.levelObj.coordinate));
+  if (!result) return;
+  const { segments } = result;
+  for (const seg of segments) {
+    const na = graph.nodes[seg.from], nb = graph.nodes[seg.to];
+    if (!na || !nb) continue;
+    const pa = toVec3(na.levelObj.coordinate), pb = toVec3(nb.levelObj.coordinate);
+    const mid = pa.clone().add(pb).multiplyScalar(0.5);
+    const dir = pb.clone().sub(pa).normalize();
+    const segLen = pa.distanceTo(pb);
+    // 直线段管道高亮
+    const curve = new THREE.LineCurve3(pa, pb);
+    const color = seg.type === 'transfer' ? '#ffaa00' : seg.type === 'walk' ? '#ff7043' : '#ffeb3b';
+    const hGeo = new THREE.TubeGeometry(curve, 32, 3.5, 8, false);
+    const hMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.65, depthTest: true });
+    highlightGroup.add(new THREE.Mesh(hGeo, hMat));
+    // 方向箭头（每200格一个）
+    const arrowCount = Math.max(1, Math.floor(segLen / 200));
+    for (let a = 0; a < arrowCount; a++) {
+      const t = (a + 0.5) / arrowCount;
+      const pos = pa.clone().addScaledVector(dir, segLen * t);
+      const cone = new THREE.ConeGeometry(3, 8, 8, 8);
+      const coneMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const arrow = new THREE.Mesh(cone, coneMat);
+      arrow.position.copy(pos);
+      // 让锥体尖端指向行进方向
+      arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+      highlightGroup.add(arrow);
+    }
   }
-  if (pts.length < 2) return;
-  // 高亮管道
-  const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0);
-  const hGeo = new THREE.TubeGeometry(curve, 80, 3, 8, false);
-  const hMat = new THREE.MeshBasicMaterial({ color: '#ffeb3b', transparent: true, opacity: 0.7, depthTest: true });
-  const hTube = new THREE.Mesh(hGeo, hMat);
-  highlightGroup.add(hTube);
-  // 光晕
-  const gGeo = new THREE.TubeGeometry(curve, 80, 5, 8, false);
-  const gMat = new THREE.MeshBasicMaterial({ color: '#ffeb3b', transparent: true, opacity: 0.2, depthWrite: false });
-  highlightGroup.add(new THREE.Mesh(gGeo, gMat));
 }
 
-// 查询
 navGo.addEventListener('click', () => {
-  const fromName = navFrom.value.trim();
-  const toName = navTo.value.trim();
-  if (!fromName || !toName) { navResult.innerHTML = '<span style="color:#f88;">请输入出发站和到达站</span>'; return; }
+  const fn = navFrom.value.trim(), tn = navTo.value.trim();
+  if (!fn || !tn) { navResult.innerHTML = '<span style="color:#f88;">请输入出发站和到达站</span>'; return; }
+  const fs = data.stations.find(s => s.name === fn);
+  const ts = data.stations.find(s => s.name === tn);
+  if (!fs) { navResult.innerHTML = `<span style="color:#f88;">未找到: ${fn}</span>`; return; }
+  if (!ts) { navResult.innerHTML = `<span style="color:#f88;">未找到: ${tn}</span>`; return; }
+  if (fs === ts) { navResult.innerHTML = '<span style="color:#f88;">出发站和到达站相同</span>'; return; }
 
-  const fromSt = data.stations.find(s => s.name === fromName);
-  const toSt = data.stations.find(s => s.name === toName);
-  if (!fromSt) { navResult.innerHTML = `<span style="color:#f88;">未找到站: ${fromName}</span>`; return; }
-  if (!toSt) { navResult.innerHTML = `<span style="color:#f88;">未找到站: ${toName}</span>`; return; }
-  if (fromSt === toSt) { navResult.innerHTML = '<span style="color:#f88;">出发站和到达站相同</span>'; return; }
+  const g = buildGraph();
+  const sks = fs.levels.map(lv => `${fs.stationId}|${lv.level}|${lv.lineId}`);
+  const result = dijkstra(g, sks, ts.stationId, navCross.checked);
+  if (!result) { navResult.innerHTML = '<span style="color:#f88;">未找到可行路线</span>'; highlightPath(null, g); return; }
 
-  const graph = buildGraph();
-  const startKeys = fromSt.levels.map(lv => `${fromSt.stationId}|${lv.level}|${lv.lineId}`);
-  const result = dijkstra(graph, startKeys, toSt.stationId, navCross.checked);
-
-  if (!result) {
-    navResult.innerHTML = '<span style="color:#f88;">未找到可行路线</span>';
-    highlightPath(null, graph);
-    return;
-  }
-
-  // 格式化输出
-  let html = `<div style="color:#4fc3f7;font-weight:600;">✅ 总距离: ${result.dist} 格</div>`;
-  let prevNode = null;
-  let segDist = 0;
-  for (const k of result.path) {
-    const n = graph.nodes[k];
-    if (!n) continue;
-    const lineName = n.line ? n.line.lineName : '';
-    if (prevNode) {
-      const d = Math.round(Math.sqrt(
-        (n.levelObj.coordinate.x - prevNode.levelObj.coordinate.x)**2 +
-        (n.levelObj.coordinate.z - prevNode.levelObj.coordinate.z)**2
-      ));
-      segDist += d;
+  let html = `<div style="font-weight:600;margin-bottom:8px;">🚩 ${fs.name} → ${ts.name} <span style="color:#4fc3f7;">${result.dist}格</span></div>`;
+  let stepNum = 1;
+  for (let i = 0; i < result.segments.length; i++) {
+    const seg = result.segments[i];
+    const na = g.nodes[seg.from], nb = g.nodes[seg.to];
+    if (!na || !nb) continue;
+    const pa = na.levelObj.coordinate, pb = nb.levelObj.coordinate;
+    const sd = Math.round(Math.sqrt((pa.x-pb.x)**2+(pa.z-pb.z)**2));
+    if (seg.type === 'transfer') {
+      html += `<div class="step" style="background:rgba(255,170,0,0.15);">🔄 <b>换乘</b>: 在 <b>${na.station.name}</b> 从 ${na.line?.lineName||'?'}(${na.levelObj.level>=0?'地上'+na.levelObj.level:'地下'+Math.abs(na.levelObj.level)}层) → ${nb.line?.lineName||'?'}(${nb.levelObj.level>=0?'地上'+nb.levelObj.level:'地下'+Math.abs(nb.levelObj.level)}层)</div>`;
+    } else if (seg.type === 'walk') {
+      html += `<div class="step" style="background:rgba(255,112,67,0.15);">🚶 <b>步行</b>: ${na.station.name} → ${nb.station.name} (${sd}格)</div>`;
+    } else {
+      const dirStr = pa.x < pb.x ? '东' : pa.x > pb.x ? '西' : pa.z < pb.z ? '南' : '北';
+      html += `<div class="step">${stepNum++}. 🚆 乘坐 <b>${na.line?.lineName||seg.lineId}</b> (${na.levelObj.level>=0?'地上'+na.levelObj.level:'地下'+Math.abs(na.levelObj.level)}层): <b>${na.station.name}</b> → <b>${nb.station.name}</b> <span style="color:#4fc3f7;">${sd}格</span> 往${dirStr}</div>`;
     }
-    if (prevNode && prevNode.station.stationId !== n.station.stationId) {
-      html += `<div class="step">🚉 <b>${prevNode.station.name}</b> → <b>${n.station.name}</b> <span class="dist">${segDist}格</span> ${prevNode.line !== n.line ? '<span style="color:#ffaa00;">[换乘]</span>' : ''}</div>`;
-    }
-    prevNode = n;
   }
-  html += `<div class="step" style="color:#4fc3f7;">🏁 到达 <b>${toSt.name}</b></div>`;
+  html += `<div class="step" style="color:#4fc3f7;">🏁 到达 <b>${ts.name}</b></div>`;
   navResult.innerHTML = html;
-
-  highlightPath(result.path, graph);
+  highlightPath(result, g);
 });
 </script>
 </body>
