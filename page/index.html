@@ -88,6 +88,9 @@
   #nav-panel button { width: 100%; padding: 8px; margin-top: 8px; border-radius: 8px; border: none; background: var(--accent); color: #1a1d23; font-weight: 600; cursor: pointer; font-size: 13px; }
   #nav-panel button:hover { opacity: 0.85; }
   #nav-result { margin-top: 12px; font-size: 12px; line-height: 1.6; }
+  #nav-panel h3 { display: flex; align-items: center; justify-content: space-between; }
+  #nav-toggle { cursor: pointer; color: #888; font-size: 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  #nav-toggle:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
   #nav-result .step { padding: 4px 8px; margin: 2px 0; border-radius: 4px; background: rgba(255,255,255,0.05); }
   #nav-result .dist { color: var(--text-dim); font-size: 11px; }
   #nav-panel.collapsed > :not(h3) { display: none; }
@@ -111,7 +114,7 @@
 </div>
 
 <div id="nav-panel">
-  <h3>🧭 路线导航 <span id="nav-toggle" style="cursor:pointer;color:#888;font-size:14px;">×</span></h3>
+  <h3>🧭 路线导航 <span id="nav-toggle">×</span></h3>
   <input id="nav-from" placeholder="出发站" list="station-list">
   <input id="nav-to" placeholder="到达站" list="station-list">
   <datalist id="station-list"></datalist>
