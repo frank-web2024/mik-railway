@@ -128,10 +128,13 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 const res = await fetch('railway_data.json');
 const data = await res.json();
 
+// 地面高度：取所有站点最低 y 坐标再往下偏移
+const allY = data.stations.flatMap(s => s.levels.map(l => l.coordinate.y));
+const GROUND_Y = Math.min(...allY) - 15;
+
 // ── 常量 ──────────────────────────────────────
 const STATION_RADIUS = 6;
 const STATION_SEGMENTS = 32;
-const GROUND_Y = 35; // 地面参考面 y 坐标（略低于最低站点 y=41）
 
 // ── 场景初始化 ────────────────────────────────
 const container = document.getElementById('canvas-container');
