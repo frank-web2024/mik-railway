@@ -501,11 +501,19 @@ function drawNavHighlight() {
     const pts = seg.pathPts;
     if (!pts || pts.length < 2) continue;
     const color = seg.type === 'transfer' ? '#ffaa00' : seg.type === 'walk' ? '#ff7043' : '#ffeb3b';
-    // 管道线
+    // 管道线（适配弯道）
     ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 8; ctx.globalAlpha = 0.5;
     ctx.beginPath();
     const s0 = w2s(pts[0].x, pts[0].z); ctx.moveTo(s0.x, s0.y);
-    for (let i = 1; i < pts.length; i++) { const s = w2s(pts[i].x, pts[i].z); ctx.lineTo(s.x, s.y); }
+    if (pts.length === 5) {
+      // 弯道路径：直线→弧线→直线
+      const s1 = w2s(pts[1].x, pts[1].z); ctx.lineTo(s1.x, s1.y);
+      const sc = w2s(pts[2].x, pts[2].z);
+      const s3 = w2s(pts[3].x, pts[3].z); ctx.quadraticCurveTo(sc.x, sc.y, s3.x, s3.y);
+      const s4 = w2s(pts[4].x, pts[4].z); ctx.lineTo(s4.x, s4.y);
+    } else {
+      for (let i = 1; i < pts.length; i++) { const s = w2s(pts[i].x, pts[i].z); ctx.lineTo(s.x, s.y); }
+    }
     ctx.stroke(); ctx.restore();
     // 动画小球
     let totalL = 0; const lens = [];
