@@ -59,6 +59,22 @@
           "tracks": 2
         }
       ]
+    },
+    {
+      "stationId": "ST003",
+      "name": "主城站",
+      "district": "主城中心",
+      "openingDate": {"y": 2025, "m": 12, "d": 29},
+      "platformCount": 2,
+      "levels": [
+        {
+          "level": -1,
+          "coordinate": {"x": -38, "y": 41, "z": 101},
+          "direction": "e,w",
+          "lineId": "L002",
+          "tracks": 2
+        }
+      ]
     }
   ]
 }
