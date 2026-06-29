@@ -127,6 +127,7 @@ function fitView() {
   viewY = sh/2 - (mz+Mz)/2*zoom;
 }
 fitView();
+const initZoom = zoom;
 window.addEventListener('resize', fitView);
 
 function w2s(wx,wz) { return {x:wx*zoom+viewX, y:wz*zoom+viewY}; }
@@ -166,7 +167,7 @@ canvas.addEventListener('mouseleave', ()=>{ dragging=false; });
 canvas.addEventListener('wheel', e=>{
   e.preventDefault();
   const w=s2w(e.clientX, e.clientY);
-  zoom*=e.deltaY<0?1.1:0.9; zoom=Math.max(0.02, Math.min(20, zoom));
+  zoom*=e.deltaY<0?1.1:0.9; zoom=Math.max(initZoom, Math.min(20, zoom));
   viewX=e.clientX-w.x*zoom; viewY=e.clientY-w.z*zoom;
   render();
 },{passive:false});
