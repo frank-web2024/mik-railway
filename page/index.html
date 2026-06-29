@@ -124,7 +124,7 @@ const STATION_SEGMENTS = 32;
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#1a1d23');
-scene.fog = new THREE.Fog('#1a1d23', 2500, 10000);
+scene.fog = new THREE.Fog('#1a1d23', 4000, 15000);
 
 const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 5, 8000);
 camera.position.set(350, 300, 800);
@@ -167,11 +167,11 @@ sun.position.set(300, 400, 200);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.camera.near = 1;
-sun.shadow.camera.left = -2000;
-sun.shadow.camera.right = 2000;
-sun.shadow.camera.top = 2000;
-sun.shadow.camera.bottom = -2000;
-sun.shadow.camera.far = 6000;
+sun.shadow.camera.left = -4000;
+sun.shadow.camera.right = 4000;
+sun.shadow.camera.top = 4000;
+sun.shadow.camera.bottom = -4000;
+sun.shadow.camera.far = 10000;
 scene.add(sun);
 
 const hemi = new THREE.HemisphereLight('#8899cc', '#334455', 0.6);
@@ -179,7 +179,7 @@ scene.add(hemi);
 
 // ── 辅助元素 ──────────────────────────────────
 // 地面网格（方形，匹配 Minecraft 坐标风格）
-const gridSize = 3000;
+const gridSize = 6144;
 // 大地板半透明平面
 const groundGeo = new THREE.PlaneGeometry(gridSize, gridSize);
 const groundMat = new THREE.MeshStandardMaterial({ color: '#1d2027', roughness: 1, metalness: 0, transparent: true, opacity: 0.55 });
