@@ -368,6 +368,7 @@ for(const l of data.lines){
   d.innerHTML=`<span class="legend-dot" style="background:${l.color};box-shadow:0 0 6px ${l.color}"></span><span>${l.lineName}</span><span class="legend-badge">${l.type||''}</span>`;
   ll.appendChild(d);
 }
+let navResult2 = null;
 render();
 console.log('✅ 2D 地图就绪');
 
@@ -455,7 +456,6 @@ function dijkstra2(g, sks, endId, cross) {
   return null;
 }
 
-let navResult2 = null;
 document.getElementById('nav-toggle').onclick = function(){
   const p = document.getElementById('nav-panel');
   p.classList.toggle('collapsed');
