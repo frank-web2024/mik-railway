@@ -212,14 +212,12 @@ scene.add(ground);
     canvas.width = cellW * cols;
     canvas.height = cellH * rows;
     const ctx = canvas.getContext('2d');
+    // 地图1(+x,+z) 地图2(-x,+z) 地图3(+x,-z) 地图4(-x,-z)
+    const order = [3, 2, 1, 0]; // 地图4(左上) 地图3(右上) 地图2(左下) 地图1(右下)
     imgs.forEach((img, i) => {
+      const idx = order[i];
       const col = i % cols, row = Math.floor(i / cols);
-      // 东西向镜像（每张图在格子内左右翻转）
-      ctx.save();
-      ctx.translate((col + 1) * cellW, row * cellH);
-      ctx.scale(-1, 1);
-      ctx.drawImage(img, 0, 0, cellW, cellH);
-      ctx.restore();
+      ctx.drawImage(imgs[idx], col * cellW, row * cellH, cellW, cellH);
     });
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
