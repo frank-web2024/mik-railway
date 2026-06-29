@@ -7,7 +7,7 @@
   "lines": [
     {
       "lineId": "L001",
-      "lineName": "2号线",
+      "lineName": "Line 2",
       "description": "2号线",
       "color": "#4CAF50",
       "type": "Metro"
