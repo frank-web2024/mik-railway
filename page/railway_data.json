@@ -1,0 +1,64 @@
+{
+  "version": "1.1",
+  "lastUpdated": {"y": 2025, "m": 12, "d": 29},
+  "systemInfo": {
+    "network": "轨道交通"
+  },
+  "lines": [
+    {
+      "lineId": "L001",
+      "lineName": "2号线",
+      "description": "2号线",
+      "color": "#4CAF50",
+      "type": "Metro"
+    },
+    {
+      "lineId": "L002",
+      "lineName": "Line 404NOTFOUND",
+      "description": "未命名线路",
+      "color": "#64B5F6",
+      "type": "Planned"
+    }
+  ],
+  "stations": [
+    {
+      "stationId": "ST001",
+      "name": "木耳镇站",
+      "district": "主城区",
+      "openingDate": {"y": 2025, "m": 12, "d": 29},
+      "platformCount": 2,
+      "levels": [
+        {
+          "level": 2,
+          "coordinate": {"x": 126, "y": 79, "z": 553},
+          "direction": "e,w",
+          "lineId": "L001",
+          "tracks": 2
+        },
+        {
+          "level": -1,
+          "coordinate": {"x": 111, "y": 41, "z": 530},
+          "direction": "s,n",
+          "lineId": "L002",
+          "tracks": 2
+        }
+      ]
+    },
+    {
+      "stationId": "ST002",
+      "name": "大垭山",
+      "district": "主城区",
+      "openingDate": {"y": 2025, "m": 12, "d": 29},
+      "platformCount": 1,
+      "levels": [
+        {
+          "level": 1,
+          "coordinate": {"x": -232, "y": 106, "z": 553},
+          "direction": "e,w",
+          "lineId": "L001",
+          "tracks": 2
+        }
+      ]
+    }
+  ]
+}
