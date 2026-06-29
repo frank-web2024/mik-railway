@@ -264,21 +264,26 @@ for (const [lineId, items] of Object.entries(lineLevels)) {
   if (items.length < 2) continue;
 
   const sorted = [...items].sort((a, b) => a.level.coordinate.x - b.level.coordinate.x);
-  // 方向变化处插入拐弯点
+  // 方向变化处插入直角拐弯点
   const curvePoints = [];
   for (let i = 0; i < sorted.length; i++) {
-    curvePoints.push(toVec3(sorted[i].level.coordinate));
+    const a = sorted[i].level;
+    curvePoints.push(toVec3(a.coordinate));
     if (i < sorted.length - 1) {
-      const d1 = sorted[i].level.direction;
-      const d2 = sorted[i + 1].level.direction;
-      // 方向不同 → 插入中点作为拐弯
-      if (d1 !== d2) {
-        const mid = toVec3(sorted[i].level.coordinate).add(toVec3(sorted[i + 1].level.coordinate)).multiplyScalar(0.5);
-        curvePoints.push(mid);
+      const b = sorted[i + 1].level;
+      if (a.direction !== b.direction) {
+        // L形拐角：e,w方向沿x，s,n方向沿z
+        const c = toVec3(a.coordinate).clone();
+        if (a.direction === 'e,w' && b.direction === 's,n') {
+          c.x = b.coordinate.x; // 先拐到B的x
+        } else if (a.direction === 's,n' && b.direction === 'e,w') {
+          c.z = b.coordinate.z; // 先拐到B的z
+        }
+        curvePoints.push(c);
       }
     }
   }
-  const curve = new THREE.CatmullRomCurve3(curvePoints, false, 'catmullrom', 0.5);
+  const curve = new THREE.CatmullRomCurve3(curvePoints, false, 'catmullrom', 0);
 
   if (isPlanned) {
     const tubeGeo = new THREE.TubeGeometry(curve, TUBE_SEGMENTS, TUBE_RADIUS * 0.5, TUBE_RADIAL, false);

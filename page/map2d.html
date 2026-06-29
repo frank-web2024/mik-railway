@@ -212,15 +212,19 @@ function render(){
   for(const [lid, items] of Object.entries(lineLevels)){
     const line=lineMap[lid]; if(!line||items.length<2) continue;
     const sorted=[...items].sort((a,b)=>a.level.coordinate.x-b.level.coordinate.x);
-    // 方向变化处插入拐弯点
+    // 方向变化处插入直角拐弯点
     const pts=[];
     for(let i=0;i<sorted.length;i++){
-      pts.push({x:sorted[i].level.coordinate.x, z:sorted[i].level.coordinate.z});
-      if(i<sorted.length-1 && sorted[i].level.direction!==sorted[i+1].level.direction){
-        pts.push({
-          x:(sorted[i].level.coordinate.x+sorted[i+1].level.coordinate.x)/2,
-          z:(sorted[i].level.coordinate.z+sorted[i+1].level.coordinate.z)/2
-        });
+      const a=sorted[i].level;
+      pts.push({x:a.coordinate.x, z:a.coordinate.z});
+      if(i<sorted.length-1){
+        const b=sorted[i+1].level;
+        if(a.direction!==b.direction){
+          const c={x:a.coordinate.x, z:a.coordinate.z};
+          if(a.direction==='e,w'&&b.direction==='s,n') c.x=b.coordinate.x;
+          else if(a.direction==='s,n'&&b.direction==='e,w') c.z=b.coordinate.z;
+          pts.push(c);
+        }
       }
     }
     if(line.type==='Planned'){
