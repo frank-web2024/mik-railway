@@ -93,8 +93,8 @@
   #nav-toggle:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
   #nav-result .step { padding: 4px 8px; margin: 2px 0; border-radius: 4px; background: rgba(255,255,255,0.05); }
   #nav-result .dist { color: var(--text-dim); font-size: 11px; }
-  #nav-panel > :not(h3) { max-height: 300px; overflow: hidden; transition: max-height 0.25s ease, opacity 0.25s ease, margin 0.25s ease; }
-  #nav-panel.collapsed > :not(h3) { max-height: 0; opacity: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
+  #nav-body { max-height: 400px; overflow: hidden; transition: max-height 0.25s ease, opacity 0.25s ease; }
+  #nav-panel.collapsed #nav-body { max-height: 0; opacity: 0; }
   #nav-panel.collapsed { padding-bottom: 6px; }
 </style>
 </head>
@@ -117,6 +117,7 @@
 
 <div id="nav-panel">
   <h3>🧭 路线导航 <span id="nav-toggle">×</span></h3>
+  <div id="nav-body">
   <input id="nav-from" placeholder="出发站" list="station-list">
   <input id="nav-to" placeholder="到达站" list="station-list">
   <datalist id="station-list"></datalist>
@@ -124,6 +125,7 @@
   <label><input type="checkbox" id="nav-detail"> 详细模式</label>
   <button id="nav-go">查询路线</button>
   <div id="nav-result"></div>
+  </div>
 </div>
 
 <div id="legend"><h3>线路图例</h3><div id="legend-list"></div></div>
