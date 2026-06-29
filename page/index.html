@@ -90,6 +90,7 @@
   #nav-result { margin-top: 12px; font-size: 12px; line-height: 1.6; }
   #nav-result .step { padding: 4px 8px; margin: 2px 0; border-radius: 4px; background: rgba(255,255,255,0.05); }
   #nav-result .dist { color: var(--text-dim); font-size: 11px; }
+  #nav-panel.collapsed > :not(h3) { display: none; }
 </style>
 </head>
 <body>
@@ -110,7 +111,7 @@
 </div>
 
 <div id="nav-panel">
-  <h3>🧭 路线导航</h3>
+  <h3>🧭 路线导航 <span id="nav-toggle" style="cursor:pointer;color:#888;font-size:14px;">×</span></h3>
   <input id="nav-from" placeholder="出发站" list="station-list">
   <input id="nav-to" placeholder="到达站" list="station-list">
   <datalist id="station-list"></datalist>
@@ -571,6 +572,11 @@ console.log(`✅ 轨道交通地图已就绪 — ${data.stations.length} 个站�
 // ═══════════════════════════════════════════════
 // 导航系统
 // ═══════════════════════════════════════════════
+document.getElementById('nav-toggle').onclick = function(){
+  var p = document.getElementById('nav-panel');
+  p.classList.toggle('collapsed');
+  this.textContent = p.classList.contains('collapsed') ? '+' : '×';
+};
 const navResult = document.getElementById('nav-result');
 const navFrom = document.getElementById('nav-from');
 const navTo = document.getElementById('nav-to');
