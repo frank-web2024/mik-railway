@@ -678,35 +678,34 @@ function highlightPath(result, graph) {
     if (!na || !nb) continue;
     const pts = seg.pathPts && seg.pathPts.length >= 2 ? seg.pathPts : [toVec3(na.levelObj.coordinate), toVec3(nb.levelObj.coordinate)];
 
-    // 沿路径创建曲线
-    const curvePts = [];
-    if (seg.type === 'line' && pts.length > 2) {
-      // 有弯道：用 CatmullRom 平滑
-      curvePts.push(...pts);
+    // 用和原始线路相同的 CurvePath 方式构建曲线
+    const curve = new THREE.CurvePath();
+    for (let p = 1; p < pts.length; p++) {
+      if (p === 2 && pts.length === 5) {
+        // 贝塞尔弧线段 (c1→corner→c2)
+        curve.add(new THREE.QuadraticBezierCurve3(pts[1].clone(), pts[2].clone(), pts[3].clone()));
+        p = 3; continue;
+      }
+      curve.add(new THREE.LineCurve3(pts[p-1].clone(), pts[p].clone()));
     }
-    const fullCurve = curvePts.length >= 2
-      ? new THREE.CatmullRomCurve3(curvePts, false, 'catmullrom', 0)
-      : new THREE.LineCurve3(pts[0], pts[pts.length-1]);
 
     const color = seg.type === 'transfer' ? '#ffaa00' : seg.type === 'walk' ? '#ff7043' : '#ffeb3b';
-    const hGeo = new THREE.TubeGeometry(fullCurve, 64, 4, 8, false);
+    const hGeo = new THREE.TubeGeometry(curve, 64, 4, 8, false);
     const hMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthTest: true });
     highlightGroup.add(new THREE.Mesh(hGeo, hMat));
 
-    // 方向箭头（沿曲线分布）
-    const totalLen = fullCurve.getLength();
-    const arrowInterval = 150;
-    const arrowCount = Math.max(2, Math.floor(totalLen / arrowInterval));
-    for (let a = 0; a < arrowCount; a++) {
-      const t = (a + 0.5) / arrowCount;
-      const pt = fullCurve.getPointAt(t);
-      const tangent = fullCurve.getTangentAt(t).normalize();
-      const cone = new THREE.ConeGeometry(5, 14, 8, 8);
-      const coneMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      const arrow = new THREE.Mesh(cone, coneMat);
-      arrow.position.copy(pt);
-      arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), tangent);
-      highlightGroup.add(arrow);
+    // 沿曲线分布小球指示方向
+    const totalLen = curve.getLength();
+    const interval = 120;
+    const count = Math.max(3, Math.floor(totalLen / interval));
+    const sphereGeo = new THREE.SphereGeometry(5, 12, 12);
+    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (let a = 0; a < count; a++) {
+      const t = (a + 0.5) / count;
+      const pt = curve.getPointAt(t);
+      const ball = new THREE.Mesh(sphereGeo, sphereMat);
+      ball.position.copy(pt);
+      highlightGroup.add(ball);
     }
   }
 }
