@@ -265,49 +265,53 @@ for (const [lineId, items] of Object.entries(lineLevels)) {
 
   const sorted = [...items].sort((a, b) => a.level.coordinate.x - b.level.coordinate.x);
   // 方向变化处插入直角拐弯点
-  const curvePoints = [];
-  const bendOffset = 25; // 弯弧半径
+  // 逐段：直线 + 拐弯处贝塞尔弧线
+  const fullPath = new THREE.CurvePath();
+  const bendR = 30; // 弧半径
   for (let i = 0; i < sorted.length; i++) {
     const a = sorted[i].level;
-    curvePoints.push(toVec3(a.coordinate));
-    if (i < sorted.length - 1) {
-      const b = sorted[i + 1].level;
-      if (a.direction !== b.direction) {
-        const ca = toVec3(a.coordinate);
-        const cb = toVec3(b.coordinate);
-        const c = ca.clone(); // 直角拐点
-        if (a.direction === 'e,w' && b.direction === 's,n') c.x = b.coordinate.x;
-        else if (a.direction === 's,n' && b.direction === 'e,w') c.z = b.coordinate.z;
-        // 在拐点两侧各取一点，形成圆弧过渡
-        const d1 = c.clone().sub(ca); d1.setLength(Math.min(bendOffset, d1.length() * 0.4));
-        const d2 = c.clone().sub(cb); d2.setLength(Math.min(bendOffset, d2.length() * 0.4));
-        curvePoints.push(c.clone().sub(d1)); // 靠近A的弧起点
-        curvePoints.push(c.clone().sub(d2)); // 靠近B的弧终点
-      }
+    const pa = toVec3(a.coordinate);
+    if (i === 0) continue; // 从第二点开始画段
+    const prev = sorted[i - 1].level;
+    const pp = toVec3(prev.coordinate);
+    if (prev.direction !== a.direction) {
+      // 方向变了 → 直角拐角，用贝塞尔弧线
+      const corner = pp.clone();
+      if (prev.direction === 'e,w' && a.direction === 's,n') corner.x = a.coordinate.x;
+      else if (prev.direction === 's,n' && a.direction === 'e,w') corner.z = a.coordinate.z;
+      const d1 = corner.clone().sub(pp); d1.setLength(Math.min(bendR, d1.length() * 0.45));
+      const d2 = corner.clone().sub(pa); d2.setLength(Math.min(bendR, d2.length() * 0.45));
+      const c1 = corner.clone().sub(d1);
+      const c2 = corner.clone().sub(d2);
+      fullPath.add(new THREE.LineCurve3(pp, c1));
+      fullPath.add(new THREE.QuadraticBezierCurve3(c1, corner, c2));
+      fullPath.add(new THREE.LineCurve3(c2, pa));
+    } else {
+      // 方向相同 → 直线
+      fullPath.add(new THREE.LineCurve3(pp, pa));
     }
   }
-  const curve = new THREE.CatmullRomCurve3(curvePoints, false, 'catmullrom', 0);
 
   if (isPlanned) {
-    const tubeGeo = new THREE.TubeGeometry(curve, TUBE_SEGMENTS, TUBE_RADIUS * 0.5, TUBE_RADIAL, false);
+    const tubeGeo = new THREE.TubeGeometry(fullPath, TUBE_SEGMENTS, TUBE_RADIUS * 0.5, TUBE_RADIAL, false);
     const tubeMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2, transparent: true, opacity: 0.4 });
     const tube = new THREE.Mesh(tubeGeo, tubeMat);
     tube.castShadow = true; tube.receiveShadow = true;
     lineGroup.add(tube);
     // 虚线叠加
-    const dashPts = curve.getPoints(curvePoints.length * 20);
+    const dashPts = fullPath.getPoints(sorted.length * 40);
     const dashGeo = new THREE.BufferGeometry().setFromPoints(dashPts);
     const dashLine = new THREE.Line(dashGeo, new THREE.LineDashedMaterial({ color, linewidth: 2, dashSize: 10, gapSize: 6 }));
     dashLine.computeLineDistances();
     lineGroup.add(dashLine);
   } else {
-    const tubeGeo = new THREE.TubeGeometry(curve, TUBE_SEGMENTS, TUBE_RADIUS, TUBE_RADIAL, false);
+    const tubeGeo = new THREE.TubeGeometry(fullPath, TUBE_SEGMENTS, TUBE_RADIUS, TUBE_RADIAL, false);
     const tubeMat = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.5 });
     const tube = new THREE.Mesh(tubeGeo, tubeMat);
     tube.castShadow = true; tube.receiveShadow = true;
     lineGroup.add(tube);
     // 发光外层
-    const glowGeo = new THREE.TubeGeometry(curve, TUBE_SEGMENTS, TUBE_RADIUS * 1.6, TUBE_RADIAL, false);
+    const glowGeo = new THREE.TubeGeometry(fullPath, TUBE_SEGMENTS, TUBE_RADIUS * 1.6, TUBE_RADIAL, false);
     const glowTube = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, depthWrite: false }));
     lineGroup.add(glowTube);
   }
