@@ -180,11 +180,6 @@ scene.add(hemi);
 // ── 辅助元素 ──────────────────────────────────
 // 地面网格（方形，匹配 Minecraft 坐标风格）
 const gridSize = 3000;
-const gridDiv = 80;
-const grid = new THREE.GridHelper(gridSize, gridDiv, '#333840', '#2a2d35');
-grid.position.y = GROUND_Y;
-scene.add(grid);
-
 // 大地板半透明平面
 const groundGeo = new THREE.PlaneGeometry(gridSize, gridSize);
 const groundMat = new THREE.MeshStandardMaterial({ color: '#1d2027', roughness: 1, metalness: 0, transparent: true, opacity: 0.55 });
